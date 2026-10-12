@@ -3,6 +3,6 @@ __pycache__/
 .pytest_cache/
 *.pyc
 *.egg-info/
-runs/
-generated_catalog.csv
 catalogs/
+data/
+runs/
