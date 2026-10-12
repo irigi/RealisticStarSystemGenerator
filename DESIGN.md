@@ -63,14 +63,21 @@ against data.
 
 ### 3.1 Stars (naturalistic abundance)
 
-- Primary masses from a system IMF (Chabrier 2005 / Kroupa 2001), ages from a
-  thin-disk star-formation history, [Fe/H] from the local metallicity distribution.
-- Stellar parameters (Teff, L, R, phase incl. subgiants, giants, white dwarfs)
-  from MIST isochrones; brown dwarfs from ATMO2020 / Baraffe tracks.
-- Multiplicity: Moe & Di Stefano 2017 (companion frequency, period and mass-ratio
-  distributions vs primary mass); Winters+2019 for M dwarfs.
-- **Calibration target:** the 10-pc census (Reylé+2021) and the 20-pc census
-  (Kirkpatrick+2024) for counts by spectral type, WD fraction and multiplicity.
+Implemented in `starsys.stars` (validated: `docs/validation/census.md`).
+
+- Component initial-mass function taken directly from the 20-pc census
+  (Kirkpatrick+2024, table 18, 0.01–8 M☉), Salpeter above 8 M☉. The primary-mass
+  function is deconvolved so that primaries + companions reproduce it.
+- Ages: thin disk p(age) ∝ exp(−age/5.5 Gyr) over 0–10 Gyr plus 4% thick disk
+  (10–12.5 Gyr), fitted to the census white-dwarf count and Teff distribution.
+  [Fe/H] from an approximate local age–metallicity relation.
+- Evolution: MIST v1.2 isochrones (≥0.1 M☉), BHAC15 (0.075–0.1 M☉), ATMO 2020
+  (<0.075 M☉); white dwarfs via the Cummings+2018 MIST IFMR and Montreal cooling
+  tables (Bédard+2020); crude NS/BH placeholders.
+- Multiplicity fraction from the census (0.1–1.3 M☉) and Duchêne & Kraus 2013 at
+  the mass extremes; separations and mass ratios from Duchêne & Kraus 2013;
+  hierarchical triples/quadruples with ≥3× nested separations.
+- Spectral types from the Pecaut & Mamajek dwarf sequence plus luminosity class.
 
 ### 3.2 Inner planets, 3–300 d (FGK): HM-C reimplementation
 
