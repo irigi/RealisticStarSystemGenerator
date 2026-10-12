@@ -161,3 +161,5 @@ Improvements the authors list as limitations, adopted where cheap: per-star ages
    where profiling shows they pay off.
 
 Each phase ends with a validation report (plots + metrics against data).
+
+Current status and the concrete plan for the next phase: `docs/NEXT_STEPS.md`.
