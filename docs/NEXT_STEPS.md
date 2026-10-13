@@ -41,16 +41,7 @@ f_swp clipped to 1 (flagged), to be replaced in 4.2. Binary components get
 independent HM-C systems (flagged) until 4.5 prunes them. No XUV/bolometric scaling
 (needs an α_pret re-fit).
 
-Follow-ups found during 4.1 (low priority):
-
-- Colour scatter is Gaussian, but the Kepler residuals have heavier tails, which
-  leaves a +0.0009 bias in the host fraction. Resampling the empirical residuals per
-  Teff bin would remove it.
-- Validate `age="star"` against the observed radius valley vs age (Berger+2020 Gaia–
-  Kepler ages; David+2021; Fernandes+2023) before considering it as the default.
-- HM-C has no [Fe/H] dependence. Small close-in planets are mildly more common
-  at high [Fe/H] for P < 10 d (Petigura+2018). Consider a flagged tilt once 4.3 adds
-  metallicity scaling for giants.
+Follow-ups: B1–B3 in the backlog below.
 
 ### 4.2 M dwarfs — done (2026-10-13)
 
@@ -64,23 +55,7 @@ host fraction ∝ M^1.9 (disk mass), flagged; checked against Sestovic & Demory 
 `docs/validation/planets.md`. The pre-MS flag was replaced by `young` (age < 100 Myr).
 The colour flag no longer fires on M dwarfs, and brown dwarfs are now hosts.
 
-Follow-ups found during 4.2:
-
-- Mid-to-late M radius distribution is too broad. HM-C's σ_ln M = 1.77 cannot make the
-  narrow 1–1.5 R⊕ peak of Ment & Charbonneau (too many sub-Earths, ~2σ), and the
-  total is 1.7× high. A narrower mass distribution for low-mass hosts, or an
-  Earth-like (not pure-silicate) composition for bare planets, may fix both.
-  Revisit when more TESS M-dwarf statistics are available.
-- The early-M parameters are degenerate (different fits score within noise). Carry
-  that uncertainty like HM-C's posterior: sample (d_lrc, d_mu, f_bare, P_min) from
-  near-best fits per system instead of one point.
-- XUV/bolometric enhancement for M dwarfs (`d_log_alpha_pret`) is physically expected
-  but unconstrained by occurrence data. Constrain it with the M-dwarf radius valley
-  (Van Eylen+2021; Petigura+2022; Ho & Van Eylen 2023).
-- Planets with P < 3 d around FGK stars (including USPs, Sanchis-Ojeda+2014) are
-  absent: HM-C starts at 3 d. M dwarfs now go down to ~0.75–1.5 d.
-- HM-C has no smooth roll-off at short periods. A hard inner limit makes the shortest
-  bin too full when the limit is low (the 0.5–1.7 d excess for 2–2.5 R⊕ in DC15).
+Follow-ups: B4–B8 in the backlog below.
 
 ### 4.3 Giant planets, 0.03–30 au
 
@@ -129,6 +104,44 @@ Follow-ups found during 4.2:
 `docs/validation/planets.md`: occurrence vs P and R by stellar type compared with
 Kepler (via the HM-C catalogs), Hsu+2020 and CLS. Include the giant planet
 correlations and a "where it is extrapolating" map.
+
+## Backlog: inner-system refinements (from 4.1/4.2)
+
+Numbered so they can be referenced; ordered by expected impact within each group.
+Each needs a cited source and a validation check like the main steps.
+
+Inner occurrence, M dwarfs (from 4.2):
+
+- **B4** Mid-to-late M radius distribution is too broad. HM-C's σ_ln M = 1.77 cannot
+  make the narrow 1–1.5 R⊕ peak of Ment & Charbonneau (too many sub-Earths, ~2σ), and
+  the total is 1.7× high. Try a narrower mass distribution for low-mass hosts, or an
+  Earth-like (not pure-silicate) composition for bare planets. Revisit when more TESS
+  M-dwarf statistics are available.
+- **B5** The early-M parameters are degenerate (different fits score within noise).
+  Carry that uncertainty like HM-C's posterior: sample (d_lrc, d_mu, f_bare, P_min)
+  from near-best fits per system instead of one point.
+- **B6** XUV/bolometric enhancement for M dwarfs (`d_log_alpha_pret`) is physically
+  expected but unconstrained by occurrence data. Constrain it with the M-dwarf radius
+  valley (Van Eylen+2021; Petigura+2022; Ho & Van Eylen 2023).
+
+Short periods (from 4.2):
+
+- **B7** Planets with P < 3 d around FGK stars (including USPs, Sanchis-Ojeda+2014)
+  are absent: HM-C starts at 3 d. M dwarfs now go down to ~0.75–1.5 d.
+- **B8** HM-C has no smooth roll-off at short periods. A hard inner limit makes the
+  shortest bin too full when the limit is low (the 0.5–1.7 d excess for 2–2.5 R⊕ in
+  DC15). Do together with B7.
+
+Host mapping and age (from 4.1, low priority):
+
+- **B1** Colour scatter is Gaussian, but the Kepler residuals have heavier tails, which
+  leaves a +0.0009 bias in the host fraction. Resample the empirical residuals per
+  Teff bin.
+- **B2** Validate `age="star"` against the observed radius valley vs age (Berger+2020
+  Gaia–Kepler ages; David+2021; Fernandes+2023) before considering it as the default.
+- **B3** HM-C has no [Fe/H] dependence. Small close-in planets are mildly more common
+  at high [Fe/H] for P < 10 d (Petigura+2018). Consider a flagged tilt now that 4.3
+  has metallicity scaling for giants.
 
 ## After phase 4
 
