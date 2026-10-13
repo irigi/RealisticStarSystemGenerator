@@ -2,17 +2,18 @@
 
 Status: phases 1–3 of `DESIGN.md` are done and committed on branch `rewrite-starsys`
 (data layer, validated HM-C port, stellar population validated against the 20-pc
-census). Phase 4 (attaching planets to stars) is in progress: 4.1 and 4.2 are done, 4.3 is next.
+census). Phase 4 (attaching planets to stars) is in progress: 4.1–4.3 are done, 4.4 is next.
 
 ## Resuming
 
 ```bash
 source .venv/bin/activate
-pytest -q                                  # 24 tests, all should pass
+pytest -q                                  # 27 tests, all should pass
 python -m starsys.validation.census        # stellar population vs 20-pc census
 python -m starsys.validation.hmc --catalogs 6-25 --criterion hill   # HM-C port check
 python -m starsys.validation.planets --catalogs 1-30                # planet glue on Kepler stars
 python -m starsys.validation.mdwarf                                 # M dwarfs vs DC15, Hsu+2020, Ment+2023, K2 UCDs
+python -m starsys.validation.giants                                 # giants vs CLS, RV, direct imaging
 ```
 
 `catalogs/` and `data/` are gitignored. If `data/` is lost, rebuild the SysSim
@@ -57,21 +58,30 @@ The colour flag no longer fires on M dwarfs, and brown dwarfs are now hosts.
 
 Follow-ups: B4–B8 in the backlog below.
 
-### 4.3 Giant planets, 0.03–30 au
+### 4.3 Giant planets — done (2026-10-13)
 
-- Occurrence vs semi-major axis: Fulton+2021 (California Legacy Survey), with the
-  peak near 1–3 au and the turnover beyond it.
-- Scaling: ∝ M★ (Johnson+2010) and ∝ 10^(2·[Fe/H]) (Fischer & Valenti 2005);
-  A stars and giants per Reffert+2015 / Wolthoff+2022 (drop above ~2.5 M☉).
-- Mass function: dN/dlogM from CLS. Eccentricities: Kipping 2013 beta distribution
-  for RV planets.
-- Inner small / outer giant correlation (Bryan & Lee 2024, Weiss+2024, He & Weiss
-  2023), applied by conditioning the giant draw on the HM-C inner system.
-- Wide-orbit cap from direct imaging (Nielsen+2019, Vigan+2021).
-- Hot Jupiters (~0.5–1% for FGK) as a separate component; they suppress inner
-  companions.
-- Stability: reject or prune with the existing Hill/AMD machinery.
-- Validation: reproduce CLS occurrence vs a; hot-Jupiter rate vs Kepler.
+`starsys.outer.giants`, attached by `attach_planets` (`giants=` option; `model` =
+"giant", "hot_jupiter", "wide_giant"). Three components:
+
+- warm and cold giants to 30 au: Fulton+2021 broken power law in a, CLS mass function
+  (flat to 900 M⊕, then ∝ M⁻¹, fitted to CLS counts), ∝ M★ (Johnson+2010) up to the
+  1.68 M☉ peak with a Gaussian drop above (Wolthoff+2022), ∝ 10^(1.2 [Fe/H]);
+  overdispersed (Gamma) numbers per star. Normalisation and dispersion fitted jointly
+  to five CLS rates;
+- hot Jupiters (1% of the CLS stellar sample; TESS stellar-mass trend), circular,
+  clearing the inner system 88% of the time (Wu+2023), with 4–5× more outer giants
+  (Knutson+2014);
+- wide giants at 10–100 au from the GPIES all-star fit (Nielsen+2019), ∝ M★².
+
+Stability: AMD-Hill or Petrovich (2015). Giants are placed with orbit redraws; inner
+systems conflicting with them are redrawn alternately with the giants' eccentricities
+(so giants with close inner companions are less eccentric, as observed), then pruned.
+The eccentricity prior is fitted so that the conditioned result matches CLS. Inside
+HM-C's window only giants ≥ 10 R⊕ are drawn. No inner-small/outer-giant correlation
+beyond metallicity (the largest samples find none at average metallicity; Bonomo+2025).
+`python -m starsys.validation.giants [--fit]`; results in `docs/validation/planets.md`.
+
+Follow-ups: B9–B14 in the backlog below.
 
 ### 4.4 Small planets beyond 300 d
 
@@ -131,6 +141,31 @@ Short periods (from 4.2):
 - **B8** HM-C has no smooth roll-off at short periods. A hard inner limit makes the
   shortest bin too full when the limit is low (the 0.5–1.7 d excess for 2–2.5 R⊕ in
   DC15). Do together with B7.
+
+Giant planets (from 4.3):
+
+- **B9** HM-C's masses for 3–6 R⊕ planets look too high for RV: 11 per 100 Sun-like stars
+  get a ≥ 30 M⊕ planet inside 300 d, against ~1.9 from the CLS model at 30–106 M⊕.
+  Compare HM-C's mass–radius relation with RV masses (e.g. Otegi+2020) and check the
+  sub-Saturn continuity at the 300 d boundary.
+- **B10** Fulton+2021's 2–8 au rate (14.1) sits 1.4σ above the joint fit, which the
+  near-complete raw CLS counts pull down. Fulton's quoted 3.8–7.1 au (15.5) and
+  3000–10000 d (12.6) rates exceed their own 2–8 au rate; the model gives ~5. Recheck
+  with the CLS posterior samples or a newer CLS occurrence paper.
+- **B11** Remaining inner-system deficit against Kepler-fitted HM-C: inner planets per
+  star drop 4% for 0.9–1.2 M☉ hosts and 8% for 1.2–1.6 M☉ (redraws favour smaller
+  systems; ~1% of FGK hosts end with no stable inner system; hot-Jupiter clearing). Compare with Kepler occurrence around RV giant hosts
+  (Kepler Giant Planet Search, Weiss+2024).
+- **B12** Giant radii use a simple Neptune–Saturn–Jupiter relation and Weiss+2013
+  inflation. Replace with evolution models (Fortney+2007; Thorngren+2016: metallicity,
+  age) in phase 5.
+- **B13** The a-distribution is the same for all stellar masses (Fulton's assumption);
+  evolved-star surveys peak at ~720 d (Wolthoff+2022). The wide component's M★² scaling
+  rests on 4 detections and is capped at 2.5 M☉; no metallicity dependence is assumed.
+  Giant architecture: no resonant chains, eccentricity independent of giant
+  multiplicity (CLS IV finds differences).
+- **B14** Giants' angles refer to the inner system's invariable plane; recompute the
+  whole system's invariable plane in phase 5.
 
 Host mapping and age (from 4.1, low priority):
 

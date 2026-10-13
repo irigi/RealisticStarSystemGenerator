@@ -158,3 +158,106 @@ Below 0.1 M☉ the host fraction follows f = (M/0.1)^1.9 (disk-mass scaling, Pas
 with planets flagged `substellar`. L/T dwarfs (Teff < 2300 K, median 0.060 M☉): 36% are
 hosts, and 68% of their planets are smaller than 1 R⊕ (median 0.8 R⊕). There is no
 measurement to compare with.
+
+## 4.3 Giant planets (`starsys.outer.giants`)
+
+Run: `python -m starsys.validation.giants [--fit]` (`--fit` reproduces the shipped
+parameters in ~12 min). Unless noted, rates are evaluated on the California Legacy
+Survey stellar sample (Rosenthal+2021, 719 stars, CDS J/ApJS/255/8, published masses and
+[Fe/H]), replicated 200 times, in M sin i using each model planet's sky inclination.
+
+### Model
+
+| Component | Range | Source |
+|---|---|---|
+| Warm/cold giants | P ≥ 10 d to 30 au, 30–6000 M⊕ | Fulton+2021 broken power law in a; mass function flat in ln M to 900 M⊕ (Fulton+2021 Fig. 6), ∝ M⁻¹ above (fitted to CLS 1–5 au counts) |
+| Hot Jupiters | 0.75–10 d, ≥ 95 M⊕ | 1.0% of CLS stars (RV and TESS single-star rates ~1%); TESS/Gan+2023 stellar-mass trend; lognormal period, median 4.4 d |
+| Wide giants | 10–100 au, 2–13 MJ | Nielsen+2019 all-star fit, ∝ M★² (capped at 2.5 M☉) |
+
+Host scaling: ∝ M★ (Johnson+2010) up to the 1.68 M☉ peak, Gaussian drop (σ 0.70 M☉)
+above (Wolthoff+2022); ∝ 10^(1.2 [Fe/H]) (Johnson+2010). No giants below 0.1 M☉;
+giant hosts outside 0.2–3 M☉ are flagged `giant_host`.
+
+Fitted parameters: normalisation 0.106 and per-star Gamma dispersion k = 1.0 (jointly,
+five targets below); hot-Jupiter rate; 5.2× more outer giants around hot-Jupiter hosts
+(Knutson+2014: 51 ± 10% have a 1–13 MJ companion at 1–20 au); eccentricity prior
+Beta(0.97, 2.36).
+
+### Stability and the inner system
+
+Of the 62 adjacent planet pairs in CLS multi-planet systems, 95% are AMD-Hill stable
+(Petit+2018), 84% pass Petrovich (2015), and 95% pass either. The failures are resonant
+pairs (HD 82943, HD 128311). AMD-Hill alone is unusable next to small planets: its
+critical AMD goes to zero with the mass ratio, so it rejects a 0.2 au planet next to a
+Jupiter at 1 au with e = 0.2. The model accepts a pair if either criterion holds.
+
+Three ways to reconcile giants with the Kepler-fitted inner systems were tried on
+100,000 systems:
+
+| Approach | FGK inner host fraction (no giants: 0.786) | Giants at 0.1–1 au |
+|---|---|---|
+| Remove unstable inner planets | 0.764 | as drawn |
+| Redraw the giants' orbits around a fixed inner system | 0.782 | ~3× below CLS |
+| Redraw the inner system, alternating with the giants' eccentricities (adopted) | 0.778 | as drawn |
+
+With the adopted scheme, 62% of warm-Jupiter hosts (10–200 d) have inner planets
+(Huang+2016: ~50%; Wu+2023: ≥ 70 ± 16%). 8% of hot-Jupiter hosts keep inner planets
+(target 12%; Wu+2023). The conditioning lowers giant eccentricities, so the prior is
+fitted to give the CLS values afterwards: mean 0.23 vs 0.238, median 0.19 vs 0.179
+(113 CLS giants at 0.1–10 au).
+
+### Fit targets
+
+| Target | Model | Observed | z |
+|---|---|---|---|
+| 2–8 au, 30–6000 M⊕, per 100 stars (Fulton+2021) | 11.6 | 14.1 +2.0/−1.8 | −1.4 |
+| 8–32 au (Fulton+2021) | 9.6 | 8.9 +3.0/−2.4 | +0.2 |
+| % of stars with a giant at 0.23–10 au (Rosenthal+2022) | 18.6 | 17.6 +2.4/−1.9 | +0.4 |
+| 0.1–5 au, 300–6000 M⊕, per 100 stars (raw CLS count, 58; near complete) | 8.8 | 8.1 ± 1.1 | +0.7 |
+| % of detectable giant hosts with ≥ 2 giants (CLS 18/89) | 20.9 | 20.2 ± 4.3 | +0.2 |
+
+Score 2.6 over 5 targets. Plain Poisson numbers score 5.6, mostly from too few
+multi-giant systems.
+
+### Checks (not fitted)
+
+| Check | Model | Observed |
+|---|---|---|
+| CLS raw counts > 300 M⊕, per 100 stars: 0.03–0.1 / 0.1–0.3 / 0.3–1 / 1–3 / 3–5 au | 0.60 / 1.01 / 2.12 / 3.60 / 2.05 | 0.83 / 0.70 / 1.95 / 3.48 / 1.95 (± 0.3–0.7) |
+| CLS mass function at 1–5 au, counts 300–900–3000–6000 M⊕ | 24.6, 13.7, 2.4 | 23, 14, 2 |
+| % with giant at 1–10 au, 0.5–20 MJ, [Fe/H] > 0 | 14.0 | 14.3 +2.0/−1.8 (Bryan & Lee 2024); 16.4 (CLS, Van Zandt & Petigura 2024) |
+| same, [Fe/H] ≤ 0 | 4.7 | 5.0 +1.6/−1.3 (Bryan & Lee 2024) |
+| same, sample at M = 0.99, [Fe/H] = −0.07 | 9.5 | 9.8 +0.9/−0.8 (Bonomo+2025) |
+| 1 M☉, [Fe/H] = 0: % with giant at a < 2.5 au, K > 20 m/s | 7.5 | 7 ± 1 (Johnson+2010) |
+| 1.5–3 M☉: 5–13 MJ at 10–100 au, % | 5.7 | 8.9 +5.0/−3.6 (Nielsen+2019) |
+| 0.8–1.2 M☉: 5–13 MJ at 10–100 au, % | 1.5 | 1.1 [0.7, 1.8] (Nielsen+2019 fit, scaled to 1 M☉) |
+| 0.8–1.2 M☉: 5–13 MJ at 30–100 au, % | 0.3 | 0.6 +0.7/−0.5 (Bowler 2016, to 300 au) |
+| 0.7–1.4 M☉: 1–13 MJ at 5–100 au, % | 9.6 | 5.8 +4.7/−2.8 (Vigan+2021, incl. brown dwarfs, to 300 au) |
+
+Tensions:
+
+- Fulton+2021's 3.8–7.1 au rate (15.5) and their 3000–10000 d rate (12.6, vs
+  Wittenmyer+2020's 6.9 +4.2/−2.1) exceed their own 2–8 au rate (14.1); the model gives
+  ~5. Not used in the fit (backlog B10).
+- Nielsen+2019's < 6.9% (95%) for 2–13 MJ at 3–100 au around < 1.5 M☉ assumes a
+  log-flat distribution; the model (8.7%) puts most of these planets at 2–4 MJ and
+  3–10 au, where GPIES is insensitive. Vigan+2021 (FGK) is +0.8σ.
+- Inside 3–300 d, HM-C gives 11 planets ≥ 30 M⊕ per 100 Sun-like stars (median
+  4.4 R⊕), while the CLS mass function gives 1.9 at 30–106 M⊕: HM-C's masses for
+  3–6 R⊕ planets look high for RV (backlog B9).
+
+### Stellar population (100,000 systems)
+
+| Host mass (M☉) | Hosts | % with giant | % hot Jupiter | % wide giant | Inner planets per star (without giants) |
+|---|---|---|---|---|---|
+| 0.08–0.3 | 52,307 | 4.2 | 0.07 | 0.20 | 5.09 (5.11) |
+| 0.3–0.6 | 30,867 | 10.3 | 0.33 | 0.87 | 4.44 (4.50) |
+| 0.6–0.9 | 11,134 | 16.2 | 0.74 | 2.59 | 2.77 (2.82) |
+| 0.9–1.2 | 5,562 | 21.7 | 0.93 | 5.16 | 2.23 (2.33) |
+| 1.2–1.6 | 1,675 | 28.9 | 0.78 | 8.84 | 1.75 (1.90) |
+| 1.6–2.5 | 501 | 26.2 | 0.20 | 14.8 | 0.89 (0.96) |
+| 2.5–8 | 118 | 10.2 | 0.85 | 28.0 | 0.24 (0.24) |
+
+The inner system loses 4% of its planets per star around Sun-like stars and 8% at
+1.2–1.6 M☉, against Kepler-fitted HM-C (backlog B11). Attaching planets with giants
+takes ~10 s per 100,000 systems (~6.5 s without).

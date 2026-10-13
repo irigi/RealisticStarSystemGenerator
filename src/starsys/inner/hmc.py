@@ -402,8 +402,11 @@ N_COL = len(COLUMNS)
 
 
 @njit(cache=True)
-def generate_system(p, mstar, rstar, teff, color, age, use_hill, out):
+def generate_system(p, mstar, rstar, teff, color, age, use_hill, out, plane):
     """Draw one planetary system. Fills ``out[:n, :]`` (columns: COLUMNS) and returns n.
+
+    ``plane`` (length 3) receives the unit normal of the system's invariable plane in
+    the frame where the sky normal is +z; it is left untouched when n = 0.
 
     ``age`` (Gyr) is the age used in the photoevaporation retention probability; the
     published model uses the fixed ``system_age`` parameter for every star.
@@ -548,6 +551,7 @@ def generate_system(p, mstar, rstar, teff, color, age, use_hill, out):
         b = a[k] * math.sqrt((1.0 - ecc[k]) * (1.0 + ecc[k]))
         L += M[k] * b * math.sqrt(mstar / a[k]) * normals[k]
     n_inv = L / np.linalg.norm(L) if nk > 1 else n_ref
+    plane[:] = n_inv
     for k in range(nk):
         out[k, 0] = P[k]
         out[k, 1] = m_final[k]
@@ -579,9 +583,10 @@ def _generate_many(params, mstar, rstar, teff, color, age, use_hill):
     buf = np.empty((cap, N_COL))
     owner = np.empty(cap, dtype=np.int64)
     work = np.empty((MAX_PLANETS_OUT, N_COL))
+    planes = np.full((n_star, 3), np.nan)
     used = 0
     for s in range(n_star):
-        nk = generate_system(params[s], mstar[s], rstar[s], teff[s], color[s], age[s], use_hill, work)
+        nk = generate_system(params[s], mstar[s], rstar[s], teff[s], color[s], age[s], use_hill, work, planes[s])
         counts[s] = nk
         if used + nk > cap:
             new_cap = 2 * cap + nk
@@ -593,11 +598,11 @@ def _generate_many(params, mstar, rstar, teff, color, age, use_hill):
         buf[used:used + nk] = work[:nk]
         owner[used:used + nk] = s
         used += nk
-    return counts, buf[:used], owner[:used]
+    return counts, buf[:used], owner[:used], planes
 
 
 def generate_catalog(params, mstar, rstar, teff, color, *, age=None, seed: int | None = None,
-                     amd_pair_criterion: str = "hill"):
+                     amd_pair_criterion: str = "hill", return_planes: bool = False):
     """Draw planetary systems for an array of stars.
 
     Returns ``(counts, planets)``: planets per star, and a dict of per-planet arrays
@@ -608,6 +613,8 @@ def generate_catalog(params, mstar, rstar, teff, color, *, age=None, seed: int |
     (n_star, n_params) with one row per star (columns as :meth:`HMCParams.as_array`).
     ``age`` (Gyr, per star) replaces the fixed ``params.system_age`` in the
     photoevaporation step. ``None`` (default) keeps the published behaviour.
+    ``return_planes=True`` also returns an (n_star, 3) array of invariable-plane
+    normals (sky normal = +z; NaN for stars without planets).
     """
     if amd_pair_criterion not in ("hill", "mmr"):
         raise ValueError("amd_pair_criterion must be 'hill' or 'mmr'")
@@ -623,10 +630,12 @@ def generate_catalog(params, mstar, rstar, teff, color, *, age=None, seed: int |
     if age is None:
         age = rows[:, I_AGE]
     arrs = [np.ascontiguousarray(x, dtype=np.float64) for x in (rows, mstar, rstar, teff, color, age)]
-    counts, buf, owner = _generate_many(*arrs, amd_pair_criterion == "hill")
+    counts, buf, owner, planes = _generate_many(*arrs, amd_pair_criterion == "hill")
     planets = {"star_index": owner}
     for j, name in enumerate(COLUMNS):
         planets[name] = buf[:, j]
     planets["clusterid"] = planets["clusterid"].astype(np.int32)
     planets["lost_envelope"] = planets["lost_envelope"].astype(bool)
+    if return_planes:
+        return counts, planets, planes
     return counts, planets

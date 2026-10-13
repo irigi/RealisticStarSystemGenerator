@@ -119,6 +119,12 @@ dwarf sequence with a Kepler-calibrated offset and scatter; validated on Kepler 
   Johnson+2010 and Fischer & Valenti 2005; inner-small/outer-giant correlation from
   Bryan & Lee 2024, Weiss+2024 and He & Weiss 2023; wide orbits capped by
   direct-imaging rates (Nielsen+2019, Vigan+2021).
+  Implemented in `starsys.outer.giants` (validated: `docs/validation/planets.md` §4.3):
+  CLS warm/cold giants to 30 au, hot Jupiters and direct-imaging wide giants to
+  100 au. The latest and largest samples find no inner-small/outer-giant correlation at
+  average metallicity (Bonomo+2025), so none is imposed beyond the shared metallicity
+  dependence. Giants and inner systems are reconciled by stability (AMD-Hill or
+  Petrovich 2015), redrawing the inner system and the giants' eccentricities.
 - **Small planets beyond 300 d:** microlensing mass-ratio function (Suzuki+2016;
   Zang+2025) near and beyond the snow line; η⊕ constraints (Bryson+2021). Packing
   enforced with the same Hill/AMD machinery.

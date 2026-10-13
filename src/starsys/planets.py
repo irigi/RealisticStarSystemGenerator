@@ -1,8 +1,7 @@
 """Attach planets to the stellar components drawn by :func:`starsys.stars.population.draw_systems`.
 
 Every component is assigned the planet models that apply to it; their outputs are
-merged into one planet table keyed by (system, component). So far that is the inner
-system:
+merged into one planet table keyed by (system, component):
 
 - **HM-C** (He & Ford 2026; port in :mod:`starsys.inner.hmc`), P = 3-300 d, fitted to
   Kepler FGK dwarfs with de-reddened 0.5 <= bp-rp <= 1.7. Host colour comes from Teff
@@ -16,9 +15,24 @@ system:
   M-dwarf calibration (more planets, smaller planets, periods down to 0.5 d) phased
   in below 4000 K, and a disk-mass scaling of occurrence below 0.1 Msun
   (``model`` = "hmc_m").
+- **Giant planets** (:mod:`starsys.outer.giants`), M >= 30 Earth masses: warm and cold
+  giants from the California Legacy Survey to 30 au (``model`` = "giant"), hot Jupiters
+  ("hot_jupiter") and wide giants from direct imaging to 100 au ("wide_giant"), scaled
+  with stellar mass and [Fe/H].
+
+The two overlap inside HM-C's period window (P_min-300 d), where HM-C was fitted to
+planets below 10 Earth radii: there, giant-model planets are kept only if their radius
+is 10 Earth radii or more. Hot-Jupiter hosts lose their inner system unless it is kept
+with probability ``hj_keep_inner``. An inner system that is not stable next to the
+host's giants (:func:`starsys.outer.giants.pair_stable`) is redrawn, alternating with
+the eccentricities of its giants, up to ``GIANT_REDRAWS`` times, after which the
+offending planets are removed. Redrawing rather
+than removing keeps most of HM-C's inner occurrence (fitted to Kepler stars, which
+include giant hosts) and agrees with RV surveys, which find inner small planets about as
+common with or without cold Jupiters (Bonomo+2025; Ruggieri+2026).
 
 Hosts: hydrogen-burning stars on the pre-main sequence or main sequence, and brown
-dwarfs. Evolved stars and remnants get no planets yet (phase 4.6). Planets are drawn
+dwarfs (inner planets only; no giants below 0.1 Msun). Evolved stars and remnants get no planets yet (phase 4.6). Planets are drawn
 around every component of a multiple independently; binary pruning is phase 4.5.
 
 Extrapolation is recorded per planet in the ``flags`` bit mask (``FLAG_*`` below).
@@ -33,6 +47,7 @@ import numpy as np
 
 from .inner import hmc
 from .inner.mdwarf import MDwarfModel, adjust_params, mdwarf_weight
+from .outer import giants as gp
 from .stars.spectral import bp_rp_from_teff, kepler_bp_rp_scatter
 from .syssim_catalogs import MODELS, available_catalog_ids, read_physical_header
 from .units import period_to_a_au
@@ -46,11 +61,16 @@ FLAG_COLOUR = 1  # host colour outside the calibrated range: bp-rp < 0.5 (~F3 an
 FLAG_YOUNG = 2  # system younger than 100 Myr: atmospheric loss still under way
 FLAG_MULTIPLE = 4  # host has stellar companions; S-type stability not yet applied (phase 4.5)
 FLAG_SUBSTELLAR = 8  # host below 0.1 Msun: occurrence from disk-mass scaling, no data
+FLAG_GIANT_HOST = 16  # giant planet around a host outside the giant calibration's 0.2-3 Msun
 
-FLAG_NAMES = {FLAG_COLOUR: "colour", FLAG_YOUNG: "young", FLAG_MULTIPLE: "multiple", FLAG_SUBSTELLAR: "substellar"}
+FLAG_NAMES = {FLAG_COLOUR: "colour", FLAG_YOUNG: "young", FLAG_MULTIPLE: "multiple", FLAG_SUBSTELLAR: "substellar",
+              FLAG_GIANT_HOST: "giant_host"}
 YOUNG_AGE_GYR = 0.1
+GIANT_CLUSTER_ID = -1  # ``clusterid`` of giant-model planets
+GIANT_REDRAWS = 20  # inner-system redraws for hosts whose inner system is unstable next to its giants
 
 DEFAULT_MDWARF = MDwarfModel()
+DEFAULT_GIANTS = gp.GiantModel()
 
 # MIST phases: -1 pre-MS, 0 MS. Stars below 0.1 Msun (BHAC15) have no MIST phase.
 _PHASE_PRE_MS, _PHASE_MS = -1, 0
@@ -88,8 +108,8 @@ def host_flags(components, systems, mdwarf: MDwarfModel | None = DEFAULT_MDWARF)
 
 
 def attach_planets(systems, components, seed=None, *, params: hmc.HMCParams | None = None,
-                   mdwarf: MDwarfModel | None = DEFAULT_MDWARF, age: str = "fixed",
-                   amd_pair_criterion: str = "hill") -> dict[str, np.ndarray]:
+                   mdwarf: MDwarfModel | None = DEFAULT_MDWARF, giants: gp.GiantModel | None = DEFAULT_GIANTS,
+                   age: str = "fixed", amd_pair_criterion: str = "hill") -> dict[str, np.ndarray]:
     """Draw planets for every component of every system.
 
     Parameters
@@ -104,6 +124,9 @@ def attach_planets(systems, components, seed=None, *, params: hmc.HMCParams | No
     mdwarf
         M-dwarf extension (:class:`starsys.inner.mdwarf.MDwarfModel`). ``None`` runs plain
         HM-C everywhere (published model; M dwarfs are then flagged ``colour``).
+    giants
+        Giant-planet model (:class:`starsys.outer.giants.GiantModel`); ``None`` for the
+        inner system only.
     age
         ``"fixed"``: photoevaporation uses HM-C's ``system_age`` (5 Gyr) for every star, as
         published. ``"star"``: use each star's own age (the authors list the fixed age as
@@ -114,9 +137,13 @@ def attach_planets(systems, components, seed=None, *, params: hmc.HMCParams | No
     Returns
     -------
     dict of per-planet arrays, sorted by system, component and period: ``system``,
-    ``component`` (row index into ``components``), ``role``, ``model`` ("hmc" or
-    "hmc_m"), ``hmc_catalog`` (posterior catalog id, 0 for fixed params), ``flags``,
-    ``a_au``, and every column of :data:`starsys.inner.hmc.COLUMNS`.
+    ``component`` (row index into ``components``), ``role``, ``model`` ("hmc",
+    "hmc_m", "giant", "hot_jupiter" or "wide_giant"), ``hmc_catalog`` (posterior
+    catalog id of the system, 0 for fixed params), ``flags``, ``a_au``, and every
+    column of :data:`starsys.inner.hmc.COLUMNS`. For giants, ``clusterid`` is -1, the
+    angles ``incl_mut``/``incl_invariable``/``asc_node_invariable`` refer to the inner
+    system's invariable plane (or a random plane without one), and ``mass_init`` and
+    ``radius_init`` equal the final values.
     """
     if age not in ("fixed", "star"):
         raise ValueError("age must be 'fixed' or 'star'")
@@ -142,24 +169,96 @@ def attach_planets(systems, components, seed=None, *, params: hmc.HMCParams | No
         is_m = np.zeros(len(host), dtype=bool)
 
     colour = bp_rp_from_teff(teff) + rng.normal(0.0, 1.0, len(teff)) * kepler_bp_rp_scatter(teff)
+    radius = np.asarray(components["radius"], dtype=float)[host]
     star_age = np.asarray(components["age_gyr"], dtype=float)[host] if age == "star" else None
-    _, pl = hmc.generate_catalog(rows, mass, np.asarray(components["radius"], dtype=float)[host], teff, colour,
-                                 age=star_age, seed=int(rng.integers(2**31)),
-                                 amd_pair_criterion=amd_pair_criterion)
-    k = pl.pop("star_index")
+
+    def inner(idx):
+        """HM-C systems for hosts ``idx`` (positions in ``host``): (host position per planet, planets, planes)."""
+        _, p, planes = hmc.generate_catalog(rows[idx], mass[idx], radius[idx], teff[idx], colour[idx],
+                                            age=None if star_age is None else star_age[idx],
+                                            seed=int(rng.integers(2**31)), amd_pair_criterion=amd_pair_criterion,
+                                            return_planes=True)
+        return idx[p.pop("star_index")], p, planes
+
+    k, pl, planes = inner(np.arange(len(host)))
+    if giants is not None:
+        k, pl = _add_giants(k, pl, planes, inner, rows, mass, host, components, giants, rng)
+    model = np.where(is_m[k], "hmc_m", "hmc").astype(object)
+    if giants is not None:
+        names = np.array([gp.COMPONENT_NAMES[c] for c in (gp.COLD, gp.HOT, gp.WIDE)], dtype=object)
+        model = np.where(pl["clusterid"] == GIANT_CLUSTER_ID, names[pl.pop("giant_component")], model)
+
     comp = host[k]
-    flags = host_flags(components, systems, mdwarf)
+    flags = host_flags(components, systems, mdwarf)[comp]
+    if giants is not None:
+        lo, hi = giants.host_mass_range
+        is_giant = pl["clusterid"] == GIANT_CLUSTER_ID
+        flags |= np.where(is_giant & ((mass[k] < lo) | (mass[k] > hi)), FLAG_GIANT_HOST, 0).astype(np.int32)
     result = {
         "system": np.asarray(components["system"])[comp],
         "component": comp,
         "role": np.asarray(components["role"])[comp],
-        "model": np.where(is_m[k], "hmc_m", "hmc").astype(object),
+        "model": model,
         "hmc_catalog": cat_id[k],
-        "flags": flags[comp],
-        "a_au": period_to_a_au(pl["period"], np.asarray(components["mass"])[comp]),
+        "flags": flags,
+        "a_au": period_to_a_au(pl["period"], mass[k]),
     }
     result.update(pl)
     return result
+
+
+def _add_giants(k, pl, planes, inner, rows, mass, host, components, giants: gp.GiantModel, rng):
+    """Draw giants, reconcile the inner systems with them and merge; sorted by host position and period."""
+    window = (rows[:, hmc.I_PMIN], rows[:, hmc.I_PMAX], rows[:, hmc.I_RMAX])
+    g = gp.draw_giants(mass, np.asarray(components["feh"], dtype=float)[host],
+                       np.asarray(components["luminosity"], dtype=float)[host], rng, giants, window=window)
+
+    def drop(sel):
+        return {key: v[~sel] for key, v in pl.items()}
+
+    # Hot-Jupiter hosts usually lose their inner system.
+    hj = np.unique(g["host"][g["hot"]])
+    cleared = np.isin(k, hj[rng.random(len(hj)) >= giants.hj_keep_inner])
+    k, pl = k[~cleared], drop(cleared)
+
+    def unstable(k, pl):
+        return gp.inner_conflicts(k, period_to_a_au(pl["period"], mass[k]), pl["planet_mass"], pl["ecc"], g, mass)
+
+    # Alternately redraw the giants' eccentricities and the inner systems of unstable hosts;
+    # remove what is still unstable.
+    bad = unstable(k, pl)
+    for _ in range(GIANT_REDRAWS):
+        redo = np.unique(k[bad])
+        if not len(redo):
+            break
+        gp.redraw_eccentricities(g, redo, mass, rng, giants)
+        sel = np.isin(k, redo)
+        bad[sel] = unstable(k[sel], {key: v[sel] for key, v in pl.items()})
+        redo = np.unique(k[bad])
+        sel = np.isin(k, redo)
+        k, pl = k[~sel], drop(sel)
+        k_new, pl_new, planes_new = inner(redo)
+        planes[redo] = planes_new
+        bad = np.concatenate([np.zeros(len(k), dtype=bool), unstable(k_new, pl_new)])
+        k = np.concatenate([k, k_new])
+        pl = {key: np.concatenate([pl[key], pl_new[key]]) for key in pl}
+    k, pl = k[~bad], drop(bad)
+
+    o = gp.orient(g["host"], planes, len(host), rng, giants)
+    n = len(g["host"])
+    gcols = {
+        "period": g["period"], "planet_mass": g["planet_mass"], "planet_radius": g["planet_radius"],
+        "clusterid": np.full(n, GIANT_CLUSTER_ID, dtype=pl["clusterid"].dtype), "ecc": g["ecc"],
+        "omega": g["omega"], "incl_mut": o["incl_mut"], "incl_invariable": o["incl_mut"],
+        "asc_node_invariable": o["asc_node"], "incl_sky": o["incl_sky"], "mean_anom": g["mean_anom"],
+        "mass_init": g["planet_mass"], "radius_init": g["planet_radius"], "lost_envelope": np.zeros(n, dtype=bool),
+        "giant_component": g["component"],
+    }
+    pl["giant_component"] = np.full(len(k), -1, dtype=np.int8)
+    k = np.concatenate([k, g["host"]])
+    pl = {key: np.concatenate([pl[key], gcols[key]]) for key in pl}
+    order = np.lexsort((pl["period"], k))
+    return k[order], {key: v[order] for key, v in pl.items()}
 
 
 def describe_flags(flags) -> list[str]:
