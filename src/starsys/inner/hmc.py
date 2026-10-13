@@ -17,7 +17,11 @@ https://github.com/ExoJulia/SysSimExClusters, step by step:
 5. period scale ~ power law in [P_min/min P', P_max/max P'], redrawn until the whole
    system is mutual-Hill stable (max 100 tries, otherwise the cluster is dropped);
 6. photoevaporation (Lopez+2012 timescale, Neil & Rogers 2020 retention probability);
-   stripped planets get pure-silicate radii (Seager+2007) with 5% scatter;
+   stripped planets get pure-silicate radii (Seager+2007) with 5% scatter. The
+   timescale scales with the planet's bolometric flux from the star's own R and Teff
+   (no separate XUV/bolometric ratio); retention probability is
+   min(alpha * t_loss / age, 1) with the fixed age ``system_age`` (5 Gyr), unless a
+   per-star age is passed;
 7. eccentricities and mutual inclinations by distributing the critical AMD per unit
    mass (singles: Rayleigh(sigma_hk) eccentricity, zero inclination);
 8. isotropic orientation of the system reference plane.
@@ -395,8 +399,12 @@ N_COL = len(COLUMNS)
 
 
 @njit(cache=True)
-def generate_system(p, mstar, rstar, teff, color, use_hill, out):
-    """Draw one planetary system. Fills ``out[:n, :]`` (columns: COLUMNS) and returns n."""
+def generate_system(p, mstar, rstar, teff, color, age, use_hill, out):
+    """Draw one planetary system. Fills ``out[:n, :]`` (columns: COLUMNS) and returns n.
+
+    ``age`` (Gyr) is the age used in the photoevaporation retention probability; the
+    published model uses the fixed ``system_age`` parameter for every star.
+    """
     # 1. Does the star host planets?
     f_swpa = min(1.0, max(0.0, p[I_FSLOPE] * (color - p[I_MEDCOL]) + p[I_FMED]))
     if np.random.random() > f_swpa:
@@ -487,7 +495,7 @@ def generate_system(p, mstar, rstar, teff, color, use_hill, out):
     for k in range(nk):
         m_env = envelope_mass(m_init_e[k])
         t_loss = mass_loss_timescale_gyr(m_env, R[k], bolometric_flux(P[k], mstar, lum), f_oplus)
-        p_ret = min(alpha_ret * t_loss / p[I_AGE], 1.0)
+        p_ret = min(alpha_ret * t_loss / age, 1.0)
         if not (np.random.random() < p_ret):
             lost[k] = 1.0
             m_final[k] = m_init_e[k] - m_env
@@ -561,7 +569,7 @@ def _seed(seed):
 
 
 @njit(cache=True)
-def _generate_many(p, mstar, rstar, teff, color, use_hill):
+def _generate_many(p, mstar, rstar, teff, color, age, use_hill):
     n_star = len(mstar)
     counts = np.zeros(n_star, dtype=np.int64)
     cap = max(16, 4 * n_star)
@@ -570,7 +578,7 @@ def _generate_many(p, mstar, rstar, teff, color, use_hill):
     work = np.empty((MAX_PLANETS_OUT, N_COL))
     used = 0
     for s in range(n_star):
-        nk = generate_system(p, mstar[s], rstar[s], teff[s], color[s], use_hill, work)
+        nk = generate_system(p, mstar[s], rstar[s], teff[s], color[s], age[s], use_hill, work)
         counts[s] = nk
         if used + nk > cap:
             new_cap = 2 * cap + nk
@@ -585,19 +593,24 @@ def _generate_many(p, mstar, rstar, teff, color, use_hill):
     return counts, buf[:used], owner[:used]
 
 
-def generate_catalog(params: HMCParams, mstar, rstar, teff, color, *, seed: int | None = None,
+def generate_catalog(params: HMCParams, mstar, rstar, teff, color, *, age=None, seed: int | None = None,
                      amd_pair_criterion: str = "hill"):
     """Draw planetary systems for an array of stars.
 
     Returns ``(counts, planets)``: planets per star, and a dict of per-planet arrays
     (keys: ``star_index`` plus :data:`COLUMNS`), sorted by star then period.
     Masses are in Earth masses, radii in Earth radii, angles in radians.
+
+    ``age`` (Gyr, per star) replaces the fixed ``params.system_age`` in the
+    photoevaporation step. ``None`` (default) keeps the published behaviour.
     """
     if amd_pair_criterion not in ("hill", "mmr"):
         raise ValueError("amd_pair_criterion must be 'hill' or 'mmr'")
     if seed is not None:
         _seed(seed)
-    arrs = [np.ascontiguousarray(x, dtype=np.float64) for x in (mstar, rstar, teff, color)]
+    if age is None:
+        age = np.full(len(mstar), params.system_age)
+    arrs = [np.ascontiguousarray(x, dtype=np.float64) for x in (mstar, rstar, teff, color, age)]
     counts, buf, owner = _generate_many(params.as_array(), *arrs, amd_pair_criterion == "hill")
     planets = {"star_index": owner}
     for j, name in enumerate(COLUMNS):

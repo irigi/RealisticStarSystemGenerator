@@ -95,7 +95,13 @@ It also exposed that the published catalogs use the Hill-stability AMD criterion
 papers describe; the port defaults to the published behaviour.
 
 Improvements the authors list as limitations, adopted where cheap: per-star ages
-(instead of a fixed 5 Gyr) and stellar XUV scaling with stellar type.
+(instead of a fixed 5 Gyr; implemented as an option, `attach_planets(age="star")`)
+and stellar XUV scaling with stellar type (not yet: bolometric flux already scales
+per star, a separate XUV ratio would need α_pret re-fitted).
+
+Attachment to model stars (`starsys.planets`): host colour from Teff via the Mamajek
+dwarf sequence with a Kepler-calibrated offset and scatter; validated on Kepler stars
+(`docs/validation/planets.md`).
 
 ### 3.3 Extensions beyond the fitted domain (each flagged as extrapolation)
 

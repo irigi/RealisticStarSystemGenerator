@@ -148,6 +148,26 @@ def read_physical_catalog(model: SysSimModel, catalog_id: int) -> tuple[dict, pd
     return params, df
 
 
+def read_physical_header(model: SysSimModel, catalog_id: int) -> dict:
+    """Model parameters of one catalog, reading only the CSV header."""
+    member = f"physical_catalog{catalog_id}.csv"
+    lines = []
+    if model.zipped:
+        with zipfile.ZipFile(model.path / "physical_catalogs.zip") as zf, zf.open(member) as fh:
+            for raw in fh:
+                line = raw.decode()
+                if not line.startswith("#"):
+                    break
+                lines.append(line)
+    else:
+        with open(model.path / member) as fh:
+            for line in fh:
+                if not line.startswith("#"):
+                    break
+                lines.append(line)
+    return parse_header(lines)
+
+
 def read_physical_stars(model: SysSimModel, catalog_id: int) -> pd.DataFrame | None:
     """Per-target table including stars with zero planets (None if not published)."""
     if not model.zipped or not (model.path / "physical_catalogs_stars.zip").exists():

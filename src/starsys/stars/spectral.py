@@ -78,3 +78,55 @@ def spectral_type(kind, teff, phase, log_g, log_l, hydrogen_atmosphere=None):
         else:
             out[i] = f"{tc[i]}{lc[i]}"
     return out
+
+
+# Median and robust (MAD) scatter of (Kepler de-reddened bp-rp) - (Mamajek dwarf bp-rp
+# at the same Teff) in 200 K bins, from the HFR2020b Kepler stellar table (Berger+2020
+# Teff). Bins outside 4200-6400 K are biased by the table's 0.5 < bp-rp < 1.7 cut and
+# are not used; the offset tapers to zero at 3800 K and 6800 K, the scatter is held at
+# the edge values. Regenerate with ``python -m starsys.validation.planets --colour``.
+# Columns: Teff, offset, scatter.
+_KEPLER_BPRP = np.array([
+    [3800, 0.0, 0.070], [4200, -0.073, 0.070], [4400, -0.104, 0.065], [4600, -0.112, 0.047],
+    [4800, -0.084, 0.043], [5000, -0.081, 0.043], [5200, -0.031, 0.048], [5400, -0.033, 0.052],
+    [5600, -0.040, 0.065], [5800, -0.063, 0.073], [6000, -0.060, 0.076], [6200, -0.041, 0.082],
+    [6400, -0.024, 0.084], [6800, 0.0, 0.084]])
+
+
+@lru_cache(maxsize=1)
+def dwarf_bp_rp_sequence():
+    """(Teff, Gaia bp-rp) of the Pecaut & Mamajek dwarf sequence, ascending in Teff."""
+    teffs, colours = [], []
+    for line in MAMAJEK_FILE.read_text().splitlines():
+        parts = line.split()
+        if len(parts) < 12 or line.startswith("#") or not parts[0].endswith("V"):
+            continue
+        try:
+            teff, colour = float(parts[1]), float(parts[11])
+        except ValueError:
+            continue
+        teffs.append(teff)
+        colours.append(colour)
+        if parts[0] == "Y4V":
+            break
+    order = np.argsort(teffs)
+    return np.array(teffs)[order], np.array(colours)[order]
+
+
+def bp_rp_from_teff(teff, kepler_scale=True):
+    """De-reddened Gaia bp-rp of a dwarf from Teff (Mamajek sequence, 2350-10700 K;
+    clamped outside). With ``kepler_scale`` the Kepler-table offset above is added, so
+    the colour is on the scale the He & Ford models were fitted on."""
+    teff = np.asarray(teff, dtype=float)
+    t, c = dwarf_bp_rp_sequence()
+    colour = np.interp(np.log10(teff), np.log10(t), c)
+    if kepler_scale:
+        colour = colour + np.interp(teff, _KEPLER_BPRP[:, 0], _KEPLER_BPRP[:, 1])
+    return colour
+
+
+def kepler_bp_rp_scatter(teff):
+    """Scatter of Kepler de-reddened bp-rp at fixed Teff (measurement, reddening and
+    metallicity combined). Models fitted on measured colours should be marginalised
+    over it when only Teff is known."""
+    return np.interp(np.asarray(teff, dtype=float), _KEPLER_BPRP[:, 0], _KEPLER_BPRP[:, 2])

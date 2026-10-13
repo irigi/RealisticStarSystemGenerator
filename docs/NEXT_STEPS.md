@@ -1,16 +1,17 @@
-# Next steps (as of 2026-10-12)
+# Next steps (as of 2026-10-13)
 
 Status: phases 1–3 of `DESIGN.md` are done and committed on branch `rewrite-starsys`
 (data layer, validated HM-C port, stellar population validated against the 20-pc
-census). Next is **phase 4: attaching planets to stars**.
+census). Phase 4 (attaching planets to stars) is in progress: 4.1 is done, 4.2 is next.
 
 ## Resuming
 
 ```bash
 source .venv/bin/activate
-pytest -q                                  # 17 tests, all should pass
+pytest -q                                  # 22 tests, all should pass
 python -m starsys.validation.census        # stellar population vs 20-pc census
 python -m starsys.validation.hmc --catalogs 6-25 --criterion hill   # HM-C port check
+python -m starsys.validation.planets --catalogs 1-30                # planet glue on Kepler stars
 ```
 
 `catalogs/` and `data/` are gitignored. If `data/` is lost, rebuild the SysSim
@@ -22,21 +23,33 @@ weights under `data/stellar/` are rebuilt on first use.
 Each step gets a cited source, a valid range, an extrapolation rule (flagged in the
 output), and a validation check, as `DESIGN.md` §3 requires.
 
-### 4.1 Planet-attachment glue (do first)
+### 4.1 Planet-attachment glue — done (2026-10-13)
 
-- New module `starsys.planets` with `attach_planets(systems, components, seed)`:
-  for each star, pick the applicable planet models, run them, and merge the results
-  into one planet table keyed by (system, component).
-- Map model stars to HM-C inputs: HM-C wants de-reddened Gaia `bp_rp`. Derive it
-  from Teff with the Mamajek table (it has a Bp−Rp column). Check this mapping
-  against the Kepler stellar table (`teff` vs `bp_rp - e_bp_min_rp_interp`).
-- HM-C validity domain: main-sequence FGK, bp−rp 0.5–1.7, P 3–300 d, R 0.5–10 R⊕.
-  Outside it, use the extensions below or extrapolate with a flag.
-- Check how HM-C's photoevaporation uses age and stellar XUV. If it assumes a fixed
-  age, add per-star age and luminosity scaling as an option (the authors list this
-  as a limitation). Keep the published behaviour as the default.
-- Validation: for Kepler-like stars, the planet table must match the HM-C catalogs
-  (reuse `validation/hmc.py`).
+`starsys.planets.attach_planets(systems, components, seed)` returns one planet table
+keyed by (system, component), with a per-planet extrapolation bit mask (`flags`:
+colour outside HM-C's 0.5–1.7, pre-main-sequence host, host in a multiple). HM-C
+parameters are drawn per system from the 100 posterior catalogs. Hosts are pre-MS and
+MS hydrogen-burning stars. Everyone else gets nothing until 4.2/4.6. Colour comes from
+Teff via Mamajek plus a Kepler-calibrated offset and scatter. Optional per-star age
+for photoevaporation (`age="star"`, off by default). Validated on Kepler stars against
+the published catalogs (`python -m starsys.validation.planets`); see
+`docs/validation/planets.md`.
+
+Left for later steps: M dwarfs and late M currently get HM-C extrapolated with
+f_swp clipped to 1 (flagged), to be replaced in 4.2. Binary components get
+independent HM-C systems (flagged) until 4.5 prunes them. No XUV/bolometric scaling
+(needs an α_pret re-fit).
+
+Follow-ups found during 4.1 (low priority):
+
+- Colour scatter is Gaussian, but the Kepler residuals have heavier tails, which
+  leaves a +0.0009 bias in the host fraction. Resampling the empirical residuals per
+  Teff bin would remove it.
+- Validate `age="star"` against the observed radius valley vs age (Berger+2020 Gaia–
+  Kepler ages; David+2021; Fernandes+2023) before considering it as the default.
+- HM-C has no [Fe/H] dependence. Small close-in planets are mildly more common
+  at high [Fe/H] for P < 10 d (Petigura+2018). Consider a flagged tilt once 4.3 adds
+  metallicity scaling for giants.
 
 ### 4.2 M dwarfs
 
@@ -49,6 +62,14 @@ output), and a validation check, as `DESIGN.md` §3 requires.
 - Brown dwarfs and late M (< 0.1 M☉): TRAPPIST-1-like compact systems are rare; use
   a low, flagged occurrence scaled from disk mass.
 - Validation: reproduce the Hsu+2020 and Dressing & Charbonneau occurrence grids.
+- Pre-MS flag: MIST labels 0.1–0.5 M☉ stars as pre-MS up to ~1 Gyr (median 0.35 Gyr),
+  so `FLAG_PRE_MS` currently fires on ~9% of hosts, nearly all ordinary M dwarfs.
+  Restrict it to genuinely young systems (e.g. age < 100 Myr, or radius inflated
+  > 10% above the ZAMS radius).
+- Photoevaporation for M dwarfs: their XUV/bolometric ratio is higher and stays
+  saturated longer (Jackson+2012; Wright+2011). The M-dwarf radius valley (Van Eylen+
+  2021; Petigura+2022; Ho & Van Eylen 2023) is the constraint. Either scale XUV
+  relative to the Sun with α_pret unchanged (flagged), or recalibrate against that valley.
 
 ### 4.3 Giant planets, 0.03–30 au
 
@@ -87,6 +108,10 @@ output), and a validation check, as `DESIGN.md` §3 requires.
   margin. Expand surviving orbits adiabatically by M_initial / M_now.
 - White dwarfs: survivors of the above; pollution rates (25–50%) as a sanity check.
 - NS/BH: pulsar planets are very rare; use a tiny flagged rate.
+- Subgiants (MIST phase 2 with log g ≥ 3.5; ~0.3% of stars) currently get no planets.
+  They should get their main-sequence inner system (HM-C on the progenitor's MS
+  parameters), then engulfment and orbit expansion as above. The same path serves the
+  "retired A star" giant-planet hosts of 4.3.
 
 ### 4.7 Phase 4 validation report
 
