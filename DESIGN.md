@@ -108,6 +108,9 @@ dwarf sequence with a Kepler-calibrated offset and scatter; validated on Kepler 
 - **M dwarfs:** f_swp → ~1, multiplicity and period distribution recalibrated to
   Kepler/TESS M-dwarf occurrence rates (Hsu, Ford & Terrien 2020, which also uses
   SysSim; Dressing & Charbonneau 2015; Ment & Charbonneau 2023 for mid-to-late M).
+  Implemented in `starsys.inner.mdwarf` (validated: `docs/validation/planets.md` §4.2):
+  more clusters, a born-bare fraction, a lower inner period limit, planet mass ∝ M★
+  below 0.5 M☉, and disk-mass-scaled occurrence below 0.1 M☉ (flagged).
 - **Hot stars (F0 and earlier, A):** f_swp extrapolated with a floor; giant planet
   occurrence vs stellar mass from RV surveys of evolved intermediate-mass stars
   (Reffert+2015; Wolthoff+2022).

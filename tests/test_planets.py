@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 
 from starsys import planets
+from starsys.inner import hmc
 from starsys.inner.hmc import COLUMNS, HMCParams
 from starsys.stars.population import draw_systems
 from starsys.stars.spectral import bp_rp_from_teff
@@ -30,7 +31,9 @@ def test_attach_planets_structure(population):
     # Sorted by component, then period.
     same = pl["component"][1:] == pl["component"][:-1]
     assert np.all(np.diff(pl["component"]) >= 0) and np.all(np.diff(pl["period"])[same] > 0)
-    assert np.all((pl["period"] >= 3.0) & (pl["period"] <= 300.0))
+    assert np.all((pl["period"] >= 0.5) & (pl["period"] <= 300.0))
+    fgk = pl["model"] == "hmc"
+    assert np.all(pl["period"][fgk] >= 3.0)
     assert set(np.unique(pl["hmc_catalog"])) <= set(planets.hmc_posterior()[0])
 
 
@@ -39,10 +42,45 @@ def test_flags(population):
     pl = planets.attach_planets(systems, comp, seed=5)
     host_teff = comp["teff"][pl["component"]]
     colour_flag = (pl["flags"] & planets.FLAG_COLOUR) > 0
-    assert colour_flag[host_teff < 3500].all()  # M dwarfs are redder than bp-rp 1.7
-    assert not colour_flag[(host_teff > 4500) & (host_teff < 6000)].any()
+    assert colour_flag[host_teff > 7000].all()  # bluer than HM-C's bp-rp 0.5
+    assert not colour_flag[host_teff < 6000].any()  # M dwarfs are covered by the extension
     multiple = (pl["flags"] & planets.FLAG_MULTIPLE) > 0
     assert np.array_equal(multiple, systems["n_components"][pl["system"]] > 1)
+    substellar = (pl["flags"] & planets.FLAG_SUBSTELLAR) > 0
+    assert np.array_equal(substellar, comp["mass"][pl["component"]] < 0.1)
+    young = (pl["flags"] & planets.FLAG_YOUNG) > 0
+    assert np.array_equal(young, comp["age_gyr"][pl["component"]] < planets.YOUNG_AGE_GYR)
+    # Without the extension, M dwarfs are out of HM-C's colour domain.
+    plain = planets.attach_planets(systems, comp, seed=5, mdwarf=None)
+    cool = comp["teff"][plain["component"]] < 3500
+    assert ((plain["flags"][cool] & planets.FLAG_COLOUR) > 0).all()
+    assert set(np.unique(plain["model"])) == {"hmc"}
+
+
+def test_mdwarf_extension_leaves_fgk_untouched():
+    from starsys.inner.mdwarf import MDwarfModel, adjust_params
+
+    p = HMCParams()
+    rows = np.tile(p.as_array(), (3, 1))
+    out = adjust_params(rows, mass=np.array([1.0, 0.45, 0.05]), teff=np.array([5800.0, 3600.0, 2500.0]),
+                        model=MDwarfModel())
+    assert np.array_equal(out[0], rows[0])
+    assert out[1, hmc.I_PMIN] < p.min_period and out[1, hmc.I_LRC] > p.log_rate_clusters
+    # Below 0.1 Msun the host fraction follows the disk-mass scaling.
+    assert out[2, hmc.I_FSLOPE] == 0.0 and out[2, hmc.I_FMED] == pytest.approx(0.5**1.9)
+
+
+def test_brown_dwarfs_get_few_small_planets():
+    n = 4000
+    comp = {"system": np.arange(n), "role": np.zeros(n, int), "kind": np.full(n, "BD", dtype=object),
+            "phase": np.full(n, np.nan), "mass": np.full(n, 0.05), "radius": np.full(n, 0.1),
+            "teff": np.full(n, 2000.0), "age_gyr": np.full(n, 3.0)}
+    systems = {"age_gyr": np.full(n, 3.0), "n_components": np.ones(n, int)}
+    pl = planets.attach_planets(systems, comp, seed=2)
+    hosts = len(np.unique(pl["component"]))
+    assert 0 < hosts < 0.5 * n
+    assert np.median(pl["planet_radius"]) < 1.5
+    assert (pl["flags"] & planets.FLAG_SUBSTELLAR).all()
 
 
 def test_reproducible_and_fixed_params(population):

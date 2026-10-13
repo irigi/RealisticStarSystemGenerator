@@ -2,16 +2,17 @@
 
 Status: phases 1–3 of `DESIGN.md` are done and committed on branch `rewrite-starsys`
 (data layer, validated HM-C port, stellar population validated against the 20-pc
-census). Phase 4 (attaching planets to stars) is in progress: 4.1 is done, 4.2 is next.
+census). Phase 4 (attaching planets to stars) is in progress: 4.1 and 4.2 are done, 4.3 is next.
 
 ## Resuming
 
 ```bash
 source .venv/bin/activate
-pytest -q                                  # 22 tests, all should pass
+pytest -q                                  # 24 tests, all should pass
 python -m starsys.validation.census        # stellar population vs 20-pc census
 python -m starsys.validation.hmc --catalogs 6-25 --criterion hill   # HM-C port check
 python -m starsys.validation.planets --catalogs 1-30                # planet glue on Kepler stars
+python -m starsys.validation.mdwarf                                 # M dwarfs vs DC15, Hsu+2020, Ment+2023, K2 UCDs
 ```
 
 `catalogs/` and `data/` are gitignored. If `data/` is lost, rebuild the SysSim
@@ -27,7 +28,7 @@ output), and a validation check, as `DESIGN.md` §3 requires.
 
 `starsys.planets.attach_planets(systems, components, seed)` returns one planet table
 keyed by (system, component), with a per-planet extrapolation bit mask (`flags`:
-colour outside HM-C's 0.5–1.7, pre-main-sequence host, host in a multiple). HM-C
+colour outside HM-C's 0.5–1.7, pre-main-sequence host (since 4.2: `young`, age < 100 Myr), host in a multiple). HM-C
 parameters are drawn per system from the 100 posterior catalogs. Hosts are pre-MS and
 MS hydrogen-burning stars. Everyone else gets nothing until 4.2/4.6. Colour comes from
 Teff via Mamajek plus a Kepler-calibrated offset and scatter. Optional per-star age
@@ -51,25 +52,35 @@ Follow-ups found during 4.1 (low priority):
   at high [Fe/H] for P < 10 d (Petigura+2018). Consider a flagged tilt once 4.3 adds
   metallicity scaling for giants.
 
-### 4.2 M dwarfs
+### 4.2 M dwarfs — done (2026-10-13)
 
-- Hsu, Ford & Terrien 2020 (a SysSim fit to Kepler M dwarfs) for occurrence vs P and
-  R. Dressing & Charbonneau 2015 as a cross-check; Ment & Charbonneau 2023 for
-  mid-to-late M (TESS, 0.1–0.3 M☉).
-- Approach: keep HM-C's architecture (clusters, spacing, AMD) and rescale the
-  number of planets and the period/radius distributions to the M-dwarf rates.
-  f_swp should be close to 1 for early M.
-- Brown dwarfs and late M (< 0.1 M☉): TRAPPIST-1-like compact systems are rare; use
-  a low, flagged occurrence scaled from disk mass.
-- Validation: reproduce the Hsu+2020 and Dressing & Charbonneau occurrence grids.
-- Pre-MS flag: MIST labels 0.1–0.5 M☉ stars as pre-MS up to ~1 Gyr (median 0.35 Gyr),
-  so `FLAG_PRE_MS` currently fires on ~9% of hosts, nearly all ordinary M dwarfs.
-  Restrict it to genuinely young systems (e.g. age < 100 Myr, or radius inflated
-  > 10% above the ZAMS radius).
-- Photoevaporation for M dwarfs: their XUV/bolometric ratio is higher and stays
-  saturated longer (Jackson+2012; Wright+2011). The M-dwarf radius valley (Van Eylen+
-  2021; Petigura+2022; Ho & Van Eylen 2023) is the constraint. Either scale XUV
-  relative to the Sun with α_pret unchanged (flagged), or recalibrate against that valley.
+`starsys.inner.mdwarf`: HM-C with an M-dwarf calibration phased in below 4000 K.
+More planets, a fraction born without H/He envelopes, and periods down to 1.5 d,
+fitted to Dressing & Charbonneau 2015. Hsu+2020's integrated rates are matched
+near their baseline prior. Below 0.5 M☉, planet masses scale ∝ M★, and the bare
+fraction and period floor are set against Ment & Charbonneau 2023. Below 0.1 M☉,
+host fraction ∝ M^1.9 (disk mass), flagged; checked against Sestovic & Demory 2020
+(K2 ultracool dwarfs). `python -m starsys.validation.mdwarf [--fit]`; results in
+`docs/validation/planets.md`. The pre-MS flag was replaced by `young` (age < 100 Myr).
+The colour flag no longer fires on M dwarfs, and brown dwarfs are now hosts.
+
+Follow-ups found during 4.2:
+
+- Mid-to-late M radius distribution is too broad. HM-C's σ_ln M = 1.77 cannot make the
+  narrow 1–1.5 R⊕ peak of Ment & Charbonneau (too many sub-Earths, ~2σ), and the
+  total is 1.7× high. A narrower mass distribution for low-mass hosts, or an
+  Earth-like (not pure-silicate) composition for bare planets, may fix both.
+  Revisit when more TESS M-dwarf statistics are available.
+- The early-M parameters are degenerate (different fits score within noise). Carry
+  that uncertainty like HM-C's posterior: sample (d_lrc, d_mu, f_bare, P_min) from
+  near-best fits per system instead of one point.
+- XUV/bolometric enhancement for M dwarfs (`d_log_alpha_pret`) is physically expected
+  but unconstrained by occurrence data. Constrain it with the M-dwarf radius valley
+  (Van Eylen+2021; Petigura+2022; Ho & Van Eylen 2023).
+- Planets with P < 3 d around FGK stars (including USPs, Sanchis-Ojeda+2014) are
+  absent: HM-C starts at 3 d. M dwarfs now go down to ~0.75–1.5 d.
+- HM-C has no smooth roll-off at short periods. A hard inner limit makes the shortest
+  bin too full when the limit is low (the 0.5–1.7 d excess for 2–2.5 R⊕ in DC15).
 
 ### 4.3 Giant planets, 0.03–30 au
 
