@@ -2,25 +2,27 @@
 
 Status: phases 1–3 of `DESIGN.md` are done and committed on branch `rewrite-starsys`
 (data layer, validated HM-C port, stellar population validated against the 20-pc
-census). Phase 4 (attaching planets to stars) is in progress: 4.1–4.4 are done, 4.5 is next.
+census). Phase 4 (attaching planets to stars) is in progress: 4.1–4.6 are done, 4.7 is next.
 
 ## Resuming
 
 ```bash
 source .venv/bin/activate
-pytest -q                                  # 29 tests, all should pass
+pytest -q                                  # 39 tests, all should pass
 python -m starsys.validation.census        # stellar population vs 20-pc census
 python -m starsys.validation.hmc --catalogs 6-25 --criterion hill   # HM-C port check
 python -m starsys.validation.planets --catalogs 1-30                # planet glue on Kepler stars
 python -m starsys.validation.mdwarf                                 # M dwarfs vs DC15, Hsu+2020, Ment+2023, K2 UCDs
 python -m starsys.validation.giants                                 # giants vs CLS, RV, direct imaging
 python -m starsys.validation.small                                  # small planets > 300 d vs η⊕, microlensing
+python -m starsys.validation.binaries                               # suppression, boost, hot Jupiters, circumbinary
+python -m starsys.validation.evolved                                # giant stars, white dwarfs, engulfment
 ```
 
 `catalogs/` and `data/` are gitignored. If `data/` is lost, rebuild the SysSim
 parquet cache with `python -m starsys.cache <models>`; the MIST grid and primary-mass
-weights under `data/stellar/` are rebuilt on first use, as is the HM-C edge table under
-`data/outer/` (~2 min).
+weights under `data/stellar/` are rebuilt on first use, as are the HM-C edge table under
+`data/outer/` (~2 min) and the single-star boost table under `data/binaries/` (~15 s).
 
 ## Phase 4, in recommended order
 
@@ -109,24 +111,37 @@ Hsu+2019's range. `python -m starsys.validation.small`; results in
 
 Follow-ups: B15–B19 in the backlog below.
 
-### 4.5 Binaries
+### 4.5 Binaries — done (2026-10-14)
 
-- S-type planets: remove orbits beyond the Holman & Wiegert 1999 critical radius.
-- Suppress planet occurrence in close binaries (a < ~100 au) per Moe & Kratter 2021.
-- Circumbinary (P-type) planets: Kepler occurrence (Armstrong+2014), outside the
-  Holman–Wiegert inner limit.
-- The population already provides hierarchy, a, e and masses (`draw_systems`).
+`starsys.binaries`, with the host rows in `starsys.hosts` (`attach_planets(binaries=...)`;
+`None` treats every component as single with field-average rates):
 
-### 4.6 Evolved stars and remnants
+- suppression: a star keeps its planetary system with probability S_bin(a) of its nearest
+  stellar companion (Moe & Kratter 2021: 0 at 1 au, 0.15 at 10 au, 1 beyond 200 au);
+- S-type limit for every companion and circumbinary limits for the inner pair (Holman &
+  Wiegert 1999);
+- circumbinary planets (`host_kind` "P", flag `circumbinary`): the single-star models outside
+  the limit, plus an empirical 4–10 R⊕ component ("circumbinary") calibrated to Armstrong+2014;
+- single-star boost of the field-average rates (HM-C, M dwarfs, microlensing anchor) from a
+  mock magnitude-limited Kepler sample, with a fitted Teff-dependent efficiency correction;
+- planes aligned with the companion's orbit in half the systems inside 700 au
+  (Christian+2022); binary orbits now have orientations in `draw_systems`.
 
-- Giants: engulf planets inside the maximum past radius (from MIST) plus a tidal
-  margin. Expand surviving orbits adiabatically by M_initial / M_now.
-- White dwarfs: survivors of the above; pollution rates (25–50%) as a sanity check.
-- NS/BH: pulsar planets are very rare; use a tiny flagged rate.
-- Subgiants (MIST phase 2 with log g ≥ 3.5; ~0.3% of stars) currently get no planets.
-  They should get their main-sequence inner system (HM-C on the progenitor's MS
-  parameters), then engulfment and orbit expansion as above. The same path serves the
-  "retired A star" giant-planet hosts of 4.3.
+Kepler-like averages are preserved to 1–2%; hot Jupiters come out at 0.62% in a transit-like
+sample and 0.80% in an RV-like sample (MK21's explanation of the discrepancy). The giant
+eccentricity prior was refitted. `python -m starsys.validation.binaries [--fit]`; results in
+`docs/validation/planets.md` §4.5. Follow-ups: B20–B22.
+
+### 4.6 Evolved stars and remnants — done (2026-10-14)
+
+`starsys.evolved` (`attach_planets(evolved=...)`): subgiants, giants, post-AGB stars and white
+dwarfs get the planets of their main-sequence progenitor (all models run on MIST's mid-MS
+state). Planets inside the Mustill & Villaver (2012) engulfment radius, a multiple of the
+maximum past radius from MIST, are removed; survivors move out by M_progenitor/M_now. Neutron
+stars get rare flagged pulsar planets ("pulsar", 0.2%); black holes none. Systems whose evolved
+component overfilled its Roche lobe are flagged `post_interaction`. 40% of white dwarfs keep
+planets (25–50% polluted). Giant stars host giant planets at 13% (Wolthoff+2022: 10.7%).
+`python -m starsys.validation.evolved`; results in §4.6. Follow-up: B23.
 
 ### 4.7 Phase 4 validation report
 
@@ -208,6 +223,30 @@ Small planets beyond 300 d (from 4.4):
   a single lens geometry.
 - **B19** Orbits of outer small planets (Rayleigh e σ = 0.05, i σ = 1.4°) continue HM-C's
   multis; nothing measures them. No small planets beyond 10 a_sl.
+
+Binaries and evolved stars (from 4.5/4.6):
+
+- **B20** The population has fewer close companions than MK21 assume (Moe & Di Stefano 2017):
+  21% of G primaries are suppressed (volume-limited) against MK21's 33 ± 5%, so the single-star
+  boost is 1.30, not ~1.8. The boost is consistent with our own population. If the population
+  is moved to MDS17's period distribution (more companions at 0.1–10 au), B follows
+  automatically (cached in `data/binaries`).
+- **B21** Where f_swpa is already 1 (K and M dwarfs), the boost goes into HM-C's cluster count:
+  Kepler-like averages are preserved, but the share of hosts with ≥ 5 inner planets rises
+  (M: 0.49 → 0.68, K: 0.15 → 0.32). A proper fix is an HM-C re-fit with binaries (suppression
+  and dilution) in the SysSim forward model. Transit dilution of planet radii in unresolved
+  binaries is not modelled either.
+- **B22** Circumbinary rates rest on ~10 Kepler planets (Armstrong+2014, factor ~3
+  uncertain); the per-binary rates (0.78 for 4–10 R⊕ around P_bin ≥ 7 d binaries) depend on
+  the placement (P/P_crit 1–2.5) and on the P_bin < 7 d shortfall. Wider binaries get the same
+  planets near their limit (extrapolation). Revisit with TESS/BEBOP circumbinary statistics.
+  Kozai–Lidov excitation of planets by inclined companions is not modelled (phase 5).
+- **B23** Giant stars have giant planets inside 0.5 au at 2% (1–1.5 M☉) and 1.8% (1.5–2.5 M☉),
+  about half the main-sequence rate. RV surveys of giants and subgiants find almost none there
+  (Johnson+2007; Bowler+2010; Wolthoff+2022), which engulfment alone does not explain for
+  subgiants. Horizontal-branch stars have 13.8% giant hosts against Wolthoff's 6.6 +2.0/−1.3%.
+  Do with B13 (mass-dependent period distribution). MIST's AGB radii at 5 M☉ are ~40% smaller
+  than MV12's models, so massive progenitors engulf less.
 
 Host mapping and age (from 4.1, low priority):
 

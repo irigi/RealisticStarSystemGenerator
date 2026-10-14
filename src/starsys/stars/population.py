@@ -205,7 +205,8 @@ def draw_systems(n, seed=None, model: PopulationModel | None = None):
     Returns ``(systems, components)`` as dicts of arrays. Components carry
     ``system`` (index), ``role`` (0 primary, k companion), the evolved properties
     from :func:`starsys.stars.evolution.evolve`, and the companion's orbit around
-    the inner subsystem (``period_days``, ``a_au``, ``ecc``; NaN for primaries).
+    the inner subsystem (``period_days``, ``a_au``, ``ecc`` and the orientation ``incl_sky``,
+    ``node``, ``omega`` in radians, isotropic; NaN for primaries).
     Hierarchy: companion k orbits the centre of mass of components 0..k-1, with
     orbits at least 3x wider than the previous one (a rough dynamical-stability
     requirement for hierarchical multiples).
@@ -258,5 +259,12 @@ def draw_systems(n, seed=None, model: PopulationModel | None = None):
     }
     mi_all = np.concatenate(mi)[order]
     comp.update(evolve(mi_all, age[comp["system"]], feh[comp["system"]], rng=rng))
+    # Orientation of each companion's orbit (isotropic; sky normal = +z). Drawn last so that
+    # everything above is unchanged by it.
+    n_c = len(mi_all)
+    companion = comp["role"] > 0
+    comp["incl_sky"] = np.where(companion, np.arccos(2.0 * rng.random(n_c) - 1.0), np.nan)
+    comp["node"] = np.where(companion, 2.0 * np.pi * rng.random(n_c), np.nan)
+    comp["omega"] = np.where(companion, 2.0 * np.pi * rng.random(n_c), np.nan)
     systems = {"age_gyr": age, "feh": feh, "n_components": ncomp + 1, "primary_initial_mass": m1}
     return systems, comp

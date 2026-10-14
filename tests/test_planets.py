@@ -25,23 +25,30 @@ def test_attach_planets_structure(population):
     n = len(pl["period"])
     assert n > 0 and all(len(v) == n for v in pl.values())
     assert set(COLUMNS) <= set(pl)
-    # Only HM-C hosts carry planets, and keys are consistent with the components table.
-    assert planets.hmc_hosts(comp)[pl["component"]].all()
+    # Only main-sequence stars, brown dwarfs, evolved stars and neutron stars carry planets
+    # (circumbinary planets are listed under the primary), and keys match the components table.
+    from starsys.evolved import evolved_hosts
+
+    allowed = planets.hmc_hosts(comp) | evolved_hosts(comp) | (comp["kind"] == "NS")
+    assert allowed[pl["component"]].all()
     assert np.array_equal(pl["system"], comp["system"][pl["component"]])
-    # Sorted by component, then period.
-    same = pl["component"][1:] == pl["component"][:-1]
+    assert (comp["role"][pl["component"][pl["host_kind"] == "P"]] == 0).all()
+    # Sorted by component, host kind, then period.
+    same = (pl["component"][1:] == pl["component"][:-1]) & (pl["host_kind"][1:] == pl["host_kind"][:-1])
     assert np.all(np.diff(pl["component"]) >= 0) and np.all(np.diff(pl["period"])[same] > 0)
-    inner = np.isin(pl["model"], ["hmc", "hmc_m"])
+    ms = planets.hmc_hosts(comp)[pl["component"]] & (pl["host_kind"] == "S")
+    inner = np.isin(pl["model"], ["hmc", "hmc_m"]) & ms
     assert np.all((pl["period"][inner] >= 0.5) & (pl["period"][inner] <= 300.0))
-    assert set(np.unique(pl["model"])) <= {"hmc", "hmc_m", "giant", "hot_jupiter", "wide_giant", "outer_small"}
-    fgk = pl["model"] == "hmc"
+    assert set(np.unique(pl["model"])) <= {"hmc", "hmc_m", "giant", "hot_jupiter", "wide_giant", "outer_small",
+                                           "circumbinary", "pulsar"}
+    fgk = (pl["model"] == "hmc") & ms
     assert np.all(pl["period"][fgk] >= 3.0)
     assert set(np.unique(pl["hmc_catalog"])) <= set(planets.hmc_posterior()[0])
 
 
 def test_flags(population):
     systems, comp = population
-    pl = planets.attach_planets(systems, comp, seed=5)
+    pl = planets.attach_planets(systems, comp, seed=5, binaries=None, evolved=None)
     host_teff = comp["teff"][pl["component"]]
     colour_flag = (pl["flags"] & planets.FLAG_COLOUR) > 0
     assert colour_flag[host_teff > 7000].all()  # bluer than HM-C's bp-rp 0.5
@@ -52,11 +59,21 @@ def test_flags(population):
     assert np.array_equal(substellar, comp["mass"][pl["component"]] < 0.1)
     young = (pl["flags"] & planets.FLAG_YOUNG) > 0
     assert np.array_equal(young, comp["age_gyr"][pl["component"]] < planets.YOUNG_AGE_GYR)
+    # With the binary model, ``multiple`` marks companions inside 200 au; circumbinary and
+    # evolved hosts carry their own flags.
+    full = planets.attach_planets(systems, comp, seed=5)
+    multiple = (full["flags"] & planets.FLAG_MULTIPLE) > 0
+    assert (systems["n_components"][full["system"]][multiple] > 1).all()
+    assert np.array_equal((full["flags"] & planets.FLAG_CIRCUMBINARY) > 0, full["host_kind"] == "P")
+    from starsys.evolved import evolved_hosts
+
+    assert np.array_equal((full["flags"] & planets.FLAG_EVOLVED) > 0, evolved_hosts(comp)[full["component"]]
+                          & (full["host_kind"] == "S"))
     # Without the extension, M dwarfs are out of HM-C's colour domain.
     plain = planets.attach_planets(systems, comp, seed=5, mdwarf=None, small=None)
     cool = comp["teff"][plain["component"]] < 3500
     assert ((plain["flags"][cool] & planets.FLAG_COLOUR) > 0).all()
-    assert set(np.unique(plain["model"])) <= {"hmc", "giant", "hot_jupiter", "wide_giant"}
+    assert set(np.unique(plain["model"])) <= {"hmc", "giant", "hot_jupiter", "wide_giant", "circumbinary", "pulsar"}
 
 
 def test_mdwarf_extension_leaves_fgk_untouched():

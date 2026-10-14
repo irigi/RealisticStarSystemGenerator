@@ -363,3 +363,163 @@ B15).
 Attaching all planet models takes ~15 s per 100,000 systems (~8 s without small planets).
 The first use builds the HM-C edge table (~2 min for the 100 posterior catalogs, cached in
 `data/outer`).
+
+## 4.5 Binaries (`starsys.binaries`)
+
+Command: `python -m starsys.validation.binaries` (300,000 systems; `--fit` refits the boost
+correction, ~3 min; 2026-10-14). Rates are intrinsic, `evolved=None`.
+
+### Model
+
+| Ingredient | Rule | Source |
+|---|---|---|
+| Suppression | a star keeps its planetary system with probability S_bin(a) of its nearest stellar companion: 0 at ≤ 1 au, 0.15 at 10 au, 1 at ≥ 200 au, linear in log a | Moe & Kratter 2021 (MK21) |
+| S-type limit | planets inside a_crit = a_b (0.464 − 0.380μ − 0.631e + …), for every companion (inner subsystem and outer companions) | Holman & Wiegert 1999 eq. 1 |
+| Circumbinary hosts | the inner pair (components 0+1, both MS/pre-MS stars or brown dwarfs) is a host of mass m₀+m₁ outside a_crit = a_b (1.60 + 5.10e + …) and inside the S-type limit of a tertiary | HW99 eq. 3 |
+| Circumbinary planets | single-star models outside the limit, except HM-C planets ≥ 4 R⊕; plus an empirical 4–10 R⊕ component at P/P_crit 1–2.5, none for P_bin < 7 d | Armstrong+2014 |
+| Single-star boost | HM-C, the M-dwarf extension and the microlensing anchor are field averages over binaries (MK21 R_AllStars): rates × B(M) = 1/⟨S_bin⟩ over a mock magnitude-limited Kepler sample, with a Teff-dependent efficiency correction for HM-C | MK21 |
+| Planes | S-type systems with a companion inside 700 au: 50% aligned with its orbit (σ 10°), else isotropic; circumbinary planets within 2° of the binary plane | Christian+2022; Kepler circumbinary planets |
+
+The RV- and imaging-based models (CLS giants, hot Jupiters, GPIES wide giants) are already
+single-star rates and are only suppressed and truncated. In HM-C, B goes into f_swpa (clipped
+at 1) and the remainder into λ_c. Extra clusters often fail HM-C's stability tests, so the
+correction factor (1.00 for F and G stars, 1.06–1.08 for K, 1.16–1.18 for M) is fitted until
+the mock-Kepler average equals the field average.
+
+Companion orbits now carry an isotropic orientation (`incl_sky`, `node`, `omega`), drawn
+after everything else in `draw_systems`.
+
+### Checks
+
+Fraction of primaries without close planets because of companions (1 − ⟨S_bin⟩):
+
+| Primaries | Volume-limited | Magnitude-limited | Mag.-limited, L ≤ 1.75 L₁ | B | MK21 (mag.-limited) |
+|---|---|---|---|---|---|
+| M 0.1–0.5 M☉ | 0.17 | 0.28 | 0.19 | 1.24 | 28 ± 5% |
+| G 0.8–1.2 M☉ | 0.21 | 0.26 | 0.23 | 1.30 | 43 ± 7% (volume-limited 33 ± 5%) |
+| A 1.6–3 M☉ | 0.28 | 0.32 | 0.30 | 1.42 | 52 ± 8% |
+
+The population (Duchêne & Kraus 2013 / Raghavan-like period distribution, validated against the
+20-pc census) has fewer close companions than the Moe & Di Stefano (2017) statistics MK21 use.
+For G dwarfs it suppresses 21% instead of 33 ± 5% (volume-limited), so B is 1.30 instead of
+MK21's ~1.8. The boost is self-consistent with the population (backlog B20).
+
+Kepler-like averages (inner HM-C planets per primary at 3–300 d, mock magnitude-limited sample):
+
+| Teff | Binaries on | Field average (binaries off) | Ratio |
+|---|---|---|---|
+| M 3000–3900 K | 4.54 | 4.57 | 0.99 |
+| K 3900–5300 K | 2.78 | 2.80 | 0.99 |
+| G 5300–6000 K | 2.39 | 2.43 | 0.98 |
+| F 6000–6800 K | 1.96 | 1.94 | 1.01 |
+
+The averages are preserved, but the multiplicity mix is not. Among hosts, the share with ≥ 5
+inner planets rises from 0.49 to 0.68 (M), 0.15 to 0.32 (K) and 0.16 to 0.22 (G), because the
+boost has to go into the cluster count where f_swpa is already 1. A consistent fix needs HM-C
+re-fitted with binaries in the forward model (backlog B21).
+
+| Check | Model | Observed |
+|---|---|---|
+| Hot Jupiters, FGK, transit-like sample (all primaries, magnitude-limited) | 0.62% | 0.4–0.6% (Kepler, TESS; MK21) |
+| Hot Jupiters, FGK, RV-like sample (no companion inside 200 au) | 0.80% | ~1% (CLS, RV surveys) |
+| Circumbinary planets, eclipse-weighted FGK pairs (P_bin 2–100 d, limit < 300 d), P < 300 d: 4–6 R⊕ | 14.6% | 14 (50%: 11.7–26) |
+| 6–10 R⊕ | 7.8% | 10.0 (50%: 8.2–16.3; 95%: 3.5–28) |
+| 8–10 R⊕ | 4.8% | 6.4 (50%: 5.7–11.6) |
+| > 10 R⊕ | 3.7% | 0 (95% < 5.9) |
+
+The transit/RV hot-Jupiter discrepancy comes out of the population without tuning: the ratio is
+0.78 = 1/B. The circumbinary per-binary rates (0.46, 0.11 and 0.21 per binary with
+P_bin ≥ 7 d for 4–6, 6–8 and 8–10 R⊕) are calibrated to Armstrong's maximum-likelihood values.
+They are large because Armstrong's rates average over all eclipsing binaries, including
+P_bin < 7 d, where no circumbinary planets are found, and because only part of the
+1–2.5 P_crit range lies inside 300 d. The Kepler sample is ~10 planets: these rates are
+uncertain by a factor ~3 (backlog B22).
+
+Companions of S-type planet hosts (0.6–1.4 M☉) relative to the field recover S_bin in every
+separation bin (0.02, 0.08, 0.29, 0.63, 0.94 at 1–3, 3–10, 10–30, 30–100 and 100–300 au,
+against S_bin 0.04, 0.11, 0.31, 0.63, 0.96 at the bin centres). The model has no free
+parameter here; this checks that suppression is applied as intended.
+
+Effect on the population (300,000 systems): 1.57 million planets instead of 1.78 million
+without the binary model. 49,000 are circumbinary, and 15% of planets are flagged `multiple`
+(48% before, when any companion counted). The giant eccentricity prior was refitted because
+single stars now carry boosted inner systems: Beta(0.98, 2.13), was Beta(0.97, 2.36).
+
+## 4.6 Evolved stars and remnants (`starsys.evolved`)
+
+Command: `python -m starsys.validation.evolved` (400,000 systems, all models; 2026-10-14).
+
+### Model
+
+- **Hosts:** subgiants, RGB, core-He-burning and AGB stars, post-AGB stars and white dwarfs with
+  progenitors up to 8 M☉. Their planets are drawn by all the planet models on the
+  progenitor's main-sequence state (MIST at log age = log lifetime − 0.3, from initial mass and
+  [Fe/H]), with the binary model applied to the present-day orbits.
+- **Maximum past radius:** the RGB and AGB tip radii come from the last MIST isochrone on which
+  the star is alive (stars a few per cent heavier are then on the giant branches, which
+  resolves the short tip phases). A 1 M☉ star reaches 0.80 au (172 R☉) at the RGB tip and
+  1.51 au on the AGB; a 3 M☉ star 0.17 and 2.66 au.
+- **Engulfment (Mustill & Villaver 2012):** a planet is lost if its initial orbit is inside
+  f × R_max. f runs from 1.0 to 0.53 for Earth-mass planets and from 2.0 to 0.95 for Jupiters,
+  between 1 and 5 M☉ progenitors; it is interpolated in log M★ and as
+  (ln M_p / ln 318)² in planet mass. These ratios come from MV12's critical initial orbits
+  (Jupiters ~3 au at 1 M☉ and ~5 au at 5 M☉; Earths 1.5–3 au) divided by their maximum AGB radii.
+  Stars still on the giant branches have f ≥ 1; white dwarfs also passed their RGB tip.
+- **Orbits:** survivors move out by M_progenitor / M_now (adiabatic mass loss); periods use the
+  present mass.
+- **Neutron stars:** 0.2% have 1–3 planets of 0.01–10 M⊕ at 0.1–1 au (PSR B1257+12-like).
+  Nitu+2022 find < 0.5% among 800 pulsars. Flagged `pulsar`. Black holes have none.
+- **Flags:** `evolved` on all planets of these hosts. `post_interaction` marks systems where a
+  component's maximum radius exceeded 0.3 of its nearest companion's separation (Roche-lobe
+  overflow, not modelled). That is 0.25% of planets.
+
+### Checks
+
+| Phase | Stars | Planets per star | % with planets | % with giant | Innermost a (au) | Median a (au) |
+|---|---|---|---|---|---|---|
+| subgiant (log g ≥ 3.5) | 1,068 | 3.0 | 72 | 18 | 0.04 | 0.63 |
+| RGB (log g < 3.5) | 879 | 2.7 | 68 | 21 | 0.04 | 0.67 |
+| core-He burning | 636 | 1.3 | 58 | 21 | 0.17 | 3.0 |
+| AGB | 52 | 1.6 | 65 | 17 | 0.28 | 3.4 |
+| white dwarf | 23,371 | 0.66 | 40 | 14 | 1.7 | 28 |
+
+Giant planets (M sin i ≥ 0.8 MJ, P > 89 d) around giant stars of 1–3 M☉: model 13.4%,
+Wolthoff+2022 10.7 +2.2/−1.6% (+1.2σ). By stage:
+- RGB: 13.1% against 14.2 +4.1/−2.7%;
+- horizontal branch: 13.8% against 6.6 +2.0/−1.3% (+3.6σ).
+
+Wolthoff attribute their RGB/HB difference to the different stellar masses of the two subsets
+(their mass fit gives 11% and 7.4%). The model's HB stars are mostly 1–1.5 M☉ (10.8%), and the
+giant model has no mass-dependent period distribution (backlog B13).
+
+Giant planets inside 0.5 au:
+
+| Stellar mass | Giant stars | Main-sequence stars |
+|---|---|---|
+| 1.0–1.5 M☉ | 2.0% | 3.1% |
+| 1.5–2.5 M☉ | 1.8% | 4.5% |
+
+Engulfment removes the closest ones, but RV surveys of giants find almost none inside
+~0.5 au (Johnson+2007; Wolthoff+2022: P < 90 d very rare), including around subgiants, which are
+too small to have engulfed them. That points to a primordial difference for intermediate-mass
+stars (backlog B23, with B13).
+
+White dwarfs (by progenitor mass):
+
+| Progenitor (M☉) | % with planets | % with a planet at 1–10 au | % with giant | Innermost a, 5th percentile (au) | Median innermost a (au) |
+|---|---|---|---|---|---|
+| 0.8–1.5 | 46 | 26 | 11 | 3.0 | 8.6 |
+| 1.5–2.5 | 42 | 13 | 16 | 5.2 | 16 |
+| 2.5–4 | 35 | 2.5 | 16 | 8.9 | 48 |
+| 4–8 | 27 | 1.6 | 13 | 9.6 | 74 |
+| all | 40 | 13 | 14 | 3.7 | 17 |
+
+40% of white dwarfs keep planets, against 25–50% showing metal pollution (Koester+2014). The
+innermost survivors lie beyond ~3 au for Sun-like progenitors and ~10 au for 4–8 M☉ (MV12: ~1.5
+and ~10 au; their closer 1 M☉ value is Jovian planets stranded by tides, which needs
+fine-tuning). For the Sun, Earth (engulfed inside 1.51 au) and Neptune-mass planets at 1.5 au
+(engulfed inside 1.88 au) are lost; Jupiter (engulfed only inside 3.0 au) survives at 9.6 au.
+MIST's AGB radii are smaller than MV12's models at high mass (2.9 vs > 5 au at 5 M☉); the
+engulfment ratios are applied to MIST, so for massive progenitors the model engulfs less.
+
+Pulsar planets: 2 around 690 neutron stars in 400,000 systems.

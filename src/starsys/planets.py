@@ -36,9 +36,20 @@ include giant hosts) and agrees with RV surveys, which find inner small planets 
 common with or without cold Jupiters (Bonomo+2025; Ruggieri+2026). Small planets beyond
 P_max are drawn last and fitted around the inner planets and giants, which do not move.
 
-Hosts: hydrogen-burning stars on the pre-main sequence or main sequence, and brown
-dwarfs (no giants below 0.1 Msun). Evolved stars and remnants get no planets yet (phase 4.6). Planets are drawn
-around every component of a multiple independently; binary pruning is phase 4.5.
+Hosts (:mod:`starsys.hosts`): hydrogen-burning stars on the pre-main sequence or main
+sequence, and brown dwarfs (no giants below 0.1 Msun).
+
+- **Multiples** (:mod:`starsys.binaries`, ``binaries=`` option): close stellar companions
+  suppress planetary systems (Moe & Kratter 2021); planets must lie inside the Holman &
+  Wiegert (1999) S-type limit; the inner pair of a multiple also hosts circumbinary planets
+  (``host_kind`` "P", flag ``circumbinary``), drawn from the same models outside the P-type
+  limit. Transit-fitted rates (HM-C and the M-dwarf extension) are boosted to single-star
+  rates. Without the binary model, every component is treated as single and the rates are
+  field averages.
+- **Evolved stars and remnants** (:mod:`starsys.evolved`, ``evolved=`` option): subgiants,
+  giants and white dwarfs get the planets of their main-sequence progenitor, minus those
+  engulfed (Mustill & Villaver 2012), on orbits widened by the mass lost; neutron stars get
+  rare pulsar planets ("pulsar"); black holes none.
 
 Extrapolation is recorded per planet in the ``flags`` bit mask (``FLAG_*`` below).
 """
@@ -50,41 +61,33 @@ from functools import lru_cache
 
 import numpy as np
 
+from . import binaries as bn
+from . import evolved as ev
+from .flags import (FLAG_BRIDGE, FLAG_CIRCUMBINARY, FLAG_COLD_EXTRAP, FLAG_COLOUR, FLAG_EVOLVED,  # noqa: F401
+                    FLAG_GIANT_HOST, FLAG_MULTIPLE, FLAG_NAMES, FLAG_POST_INTERACTION, FLAG_PULSAR,
+                    FLAG_SUBSTELLAR, FLAG_YOUNG)
+from .hosts import (HMC_COLOUR_RANGE, P_TYPE, YOUNG_AGE_GYR, build_hosts, flags_of, hmc_hosts,  # noqa: F401
+                    host_flags)
 from .inner import hmc
 from .inner.mdwarf import MDwarfModel, adjust_params, mdwarf_weight
 from .outer import giants as gp
 from .outer import small as sp
 from .stars.spectral import bp_rp_from_teff, kepler_bp_rp_scatter
 from .syssim_catalogs import MODELS, available_catalog_ids, read_physical_header
-from .units import period_to_a_au
+from .units import EARTH_MASS_MSUN, a_au_to_period, period_to_a_au
 
-# HM-C fitted domain in host colour (de-reddened Gaia bp-rp).
-HMC_COLOUR_RANGE = (0.5, 1.7)
-
-# Extrapolation flags (bit mask, per planet).
-FLAG_COLOUR = 1  # host colour outside the calibrated range: bp-rp < 0.5 (~F3 and hotter),
-                 # or > 1.7 when the M-dwarf extension is off
-FLAG_YOUNG = 2  # system younger than 100 Myr: atmospheric loss still under way
-FLAG_MULTIPLE = 4  # host has stellar companions; S-type stability not yet applied (phase 4.5)
-FLAG_SUBSTELLAR = 8  # host below 0.1 Msun: occurrence from disk-mass scaling, no data
-FLAG_GIANT_HOST = 16  # giant planet around a host outside the giant calibration's 0.2-3 Msun
-FLAG_BRIDGE = 32  # small planet between HM-C's P_max and the snow line: interpolated, not measured
-FLAG_COLD_EXTRAP = 64  # small planet beyond the snow line outside the microlensing-measured mass ratios
-                       # (log q < -5.2), separations (> 4 snow-line radii) or host masses (0.1-1 Msun)
-
-FLAG_NAMES = {FLAG_COLOUR: "colour", FLAG_YOUNG: "young", FLAG_MULTIPLE: "multiple", FLAG_SUBSTELLAR: "substellar",
-              FLAG_GIANT_HOST: "giant_host", FLAG_BRIDGE: "bridge", FLAG_COLD_EXTRAP: "cold_extrapolated"}
-YOUNG_AGE_GYR = 0.1
 GIANT_CLUSTER_ID = -1  # ``clusterid`` of giant-model planets
 SMALL_CLUSTER_ID = -2  # ``clusterid`` of small planets beyond HM-C's P_max
+PULSAR_CLUSTER_ID = -3  # ``clusterid`` of pulsar planets
+CB_CLUSTER_ID = -4  # ``clusterid`` of the empirical circumbinary component
+CB_SPLIT_RADIUS = 4.0  # circumbinary HM-C planets this large are replaced by the empirical component
 GIANT_REDRAWS = 20  # inner-system redraws for hosts whose inner system is unstable next to its giants
 
 DEFAULT_MDWARF = MDwarfModel()
 DEFAULT_GIANTS = gp.GiantModel()
 DEFAULT_SMALL = sp.SmallPlanetModel()
-
-# MIST phases: -1 pre-MS, 0 MS. Stars below 0.1 Msun (BHAC15) have no MIST phase.
-_PHASE_PRE_MS, _PHASE_MS = -1, 0
+DEFAULT_BINARIES = bn.BinaryModel()
+DEFAULT_EVOLVED = ev.EvolvedModel()
 
 
 @lru_cache(maxsize=1)
@@ -95,32 +98,11 @@ def hmc_posterior() -> tuple[tuple[int, ...], tuple[hmc.HMCParams, ...]]:
     return ids, tuple(hmc.HMCParams.from_header(read_physical_header(model, cid)) for cid in ids)
 
 
-def hmc_hosts(components) -> np.ndarray:
-    """Boolean mask of the components that get inner-system planets."""
-    kind = np.asarray(components["kind"])
-    phase = np.asarray(components["phase"], dtype=float)
-    dwarf = (kind == "star") & (np.isin(phase, (_PHASE_PRE_MS, _PHASE_MS)) | np.isnan(phase))
-    return dwarf | (kind == "BD")
-
-
-def host_flags(components, systems, mdwarf: MDwarfModel | None = DEFAULT_MDWARF) -> np.ndarray:
-    """Per-component extrapolation flags for the inner-system model."""
-    colour = bp_rp_from_teff(components["teff"])
-    flags = np.where(colour < HMC_COLOUR_RANGE[0], FLAG_COLOUR, 0)
-    flags |= np.where(np.asarray(components["age_gyr"]) < YOUNG_AGE_GYR, FLAG_YOUNG, 0)
-    n_comp = np.asarray(systems["n_components"])[components["system"]]
-    flags |= np.where(n_comp > 1, FLAG_MULTIPLE, 0)
-    if mdwarf is not None:
-        flags |= np.where(np.asarray(components["mass"]) < mdwarf.substellar_mass, FLAG_SUBSTELLAR, 0)
-    else:
-        # Without the M-dwarf extension, HM-C is extrapolated on the red side as well.
-        flags |= np.where(colour > HMC_COLOUR_RANGE[1], FLAG_COLOUR, 0)
-    return flags.astype(np.int32)
-
-
 def attach_planets(systems, components, seed=None, *, params: hmc.HMCParams | None = None,
                    mdwarf: MDwarfModel | None = DEFAULT_MDWARF, giants: gp.GiantModel | None = DEFAULT_GIANTS,
-                   small: sp.SmallPlanetModel | None = DEFAULT_SMALL, age: str = "fixed",
+                   small: sp.SmallPlanetModel | None = DEFAULT_SMALL,
+                   binaries: bn.BinaryModel | None = DEFAULT_BINARIES,
+                   evolved: ev.EvolvedModel | None = DEFAULT_EVOLVED, age: str = "fixed",
                    amd_pair_criterion: str = "hill") -> dict[str, np.ndarray]:
     """Draw planets for every component of every system.
 
@@ -141,6 +123,12 @@ def attach_planets(systems, components, seed=None, *, params: hmc.HMCParams | No
     small
         Small planets beyond HM-C's P_max (:class:`starsys.outer.small.SmallPlanetModel`);
         ``None`` for none.
+    binaries
+        Multiple-star model (:class:`starsys.binaries.BinaryModel`). ``None`` treats every
+        component as single, with field-average (transit-survey) inner rates.
+    evolved
+        Evolved stars and remnants (:class:`starsys.evolved.EvolvedModel`); ``None`` gives
+        them no planets.
     age
         ``"fixed"``: photoevaporation uses HM-C's ``system_age`` (5 Gyr) for every star, as
         published. ``"star"``: use each star's own age (the authors list the fixed age as
@@ -150,23 +138,26 @@ def attach_planets(systems, components, seed=None, *, params: hmc.HMCParams | No
 
     Returns
     -------
-    dict of per-planet arrays, sorted by system, component and period: ``system``,
-    ``component`` (row index into ``components``), ``role``, ``model`` ("hmc",
-    "hmc_m", "giant", "hot_jupiter", "wide_giant" or "outer_small"), ``hmc_catalog`` (posterior
-    catalog id of the system, 0 for fixed params), ``flags``, ``a_au``, and every
-    column of :data:`starsys.inner.hmc.COLUMNS`. For giants (``clusterid`` -1) and small
-    planets beyond P_max (``clusterid`` -2), the angles ``incl_mut``/``incl_invariable``/
-    ``asc_node_invariable`` refer to the inner system's invariable plane (or a random plane
-    without one). For giants, ``mass_init`` and ``radius_init`` equal the final values.
+    dict of per-planet arrays, sorted by system, component, host kind and period: ``system``,
+    ``component`` (row index into ``components``; the primary for circumbinary planets),
+    ``host_kind`` ("S", or "P" for planets orbiting components 0 and 1), ``host_mass`` (Msun,
+    today), ``role``, ``model`` ("hmc", "hmc_m", "giant", "hot_jupiter", "wide_giant",
+    "outer_small" or "pulsar"), ``hmc_catalog`` (posterior catalog id of the system, 0 for
+    fixed params and pulsars), ``flags``, ``a_au``, and every column of
+    :data:`starsys.inner.hmc.COLUMNS`. For giants (``clusterid`` -1), small planets beyond P_max
+    (-2) and pulsar planets (-3), the angles ``incl_mut``/``incl_invariable``/
+    ``asc_node_invariable`` refer to the inner system's invariable plane (or the host's
+    reference plane without one). For giants, ``mass_init`` and ``radius_init`` equal the
+    final values. Planets of evolved hosts are on their present (expanded) orbits.
     """
     if age not in ("fixed", "star"):
         raise ValueError("age must be 'fixed' or 'star'")
     rng = np.random.default_rng(seed)
     n_sys = len(systems["age_gyr"])
-    host = np.flatnonzero(hmc_hosts(components))
-    sys_of_host = np.asarray(components["system"])[host]
-    mass = np.asarray(components["mass"], dtype=float)[host]
-    teff = np.asarray(components["teff"], dtype=float)[host]
+    h = build_hosts(systems, components, rng, mdwarf, binaries, evolved)
+    host = h["component"]
+    sys_of_host = h["system"]
+    mass, teff, radius = h["mass"], h["teff"], h["radius"]
 
     if params is None:
         ids, posterior = hmc_posterior()
@@ -185,8 +176,12 @@ def attach_planets(systems, components, seed=None, *, params: hmc.HMCParams | No
         is_m = np.zeros(len(host), dtype=bool)
 
     colour = bp_rp_from_teff(teff) + rng.normal(0.0, 1.0, len(teff)) * kepler_bp_rp_scatter(teff)
-    radius = np.asarray(components["radius"], dtype=float)[host]
-    star_age = np.asarray(components["age_gyr"], dtype=float)[host] if age == "star" else None
+    star_age = h["age"] if age == "star" else None
+    rest = np.ones(len(host))
+    if binaries is not None and binaries.boost:
+        rows, rest = bn.apply_boost(rows, colour, bn.boost_factor(mass, teff, binaries))
+    limits = (h["a_min"], h["a_max"]) if binaries is not None else None
+    fixed_plane = np.isfinite(h["plane"][:, 0])
 
     def inner(idx):
         """HM-C systems for hosts ``idx`` (positions in ``host``): (host position per planet, planets, planes)."""
@@ -194,48 +189,159 @@ def attach_planets(systems, components, seed=None, *, params: hmc.HMCParams | No
                                             age=None if star_age is None else star_age[idx],
                                             seed=int(rng.integers(2**31)), amd_pair_criterion=amd_pair_criterion,
                                             return_planes=True)
-        return idx[p.pop("star_index")], p, planes
+        kk = idx[p.pop("star_index")]
+        if limits is not None:
+            a = period_to_a_au(p["period"], mass[kk])
+            ok = (a >= limits[0][kk]) & (a <= limits[1][kk])
+            kk, p = kk[ok], {key: v[ok] for key, v in p.items()}
+        fix = fixed_plane[idx]
+        if fix.any():
+            # Systems aligned with a binary orbit: rotate the HM-C system onto the binary's plane.
+            planes[fix] = h["plane"][idx[fix]]
+            sel = fixed_plane[kk]
+            nrm = gp.orbit_normals(h["plane"][kk[sel]], p["incl_invariable"][sel], p["asc_node_invariable"][sel])
+            p["incl_sky"][sel] = np.arccos(np.clip(nrm[:, 2], -1.0, 1.0))
+        if binaries is not None and binaries.circumbinary:
+            kk, p = _circumbinary(kk, p, idx, h, rows, binaries, rng)
+        return kk, p, planes
 
     k, pl, planes = inner(np.arange(len(host)))
     if giants is not None:
-        k, pl = _add_giants(k, pl, planes, inner, rows, mass, host, components, giants, rng)
+        k, pl = _add_giants(k, pl, planes, inner, rows, mass, h, giants, rng, limits)
     if small is not None:
         edge = sp.edge_table(table, mdwarf, small)[draw]
+        if binaries is not None:
+            edge = edge.copy()
+            edge[:, :, 0] *= rest[:, None]
         ml = {key: v[sys_of_host] for key, v in sp.draw_ml_params(n_sys, rng, small).items()}
-        k, pl = _add_small(k, pl, planes, rows, edge, colour, ml, mass, radius, teff, star_age, small, rng)
+        if binaries is not None:
+            ml["rate"] = ml["rate"] * bn.boost_factor(mass, None, binaries)  # microlensing: field average
+        k, pl = _add_small(k, pl, planes, rows, edge, colour, ml, mass, radius, teff, star_age, small, rng, limits)
     model = np.where(is_m[k], "hmc_m", "hmc").astype(object)
     if giants is not None:
         names = np.array([gp.COMPONENT_NAMES[c] for c in (gp.COLD, gp.HOT, gp.WIDE)], dtype=object)
         model = np.where(pl["clusterid"] == GIANT_CLUSTER_ID, names[pl["giant_component"]], model)
     pl.pop("giant_component", None)
     model = np.where(pl["clusterid"] == SMALL_CLUSTER_ID, "outer_small", model)
+    model = np.where(pl["clusterid"] == CB_CLUSTER_ID, "circumbinary", model)
     small_flags = pl.pop("small_flags", np.zeros(len(k), dtype=np.int32))
 
-    comp = host[k]
-    flags = host_flags(components, systems, mdwarf)[comp]
+    flags = flags_of(h, mdwarf)[k]
     if giants is not None:
         lo, hi = giants.host_mass_range
         is_giant = pl["clusterid"] == GIANT_CLUSTER_ID
         flags |= np.where(is_giant & ((mass[k] < lo) | (mass[k] > hi)), FLAG_GIANT_HOST, 0).astype(np.int32)
     flags |= small_flags
+    a_au = period_to_a_au(pl["period"], mass[k])
+    host_mass = mass[k]
+    if evolved is not None and h["evolved"].any():
+        a_au, host_mass, keep = _evolve_orbits(k, pl, a_au, h, evolved)
+        pl = {key: v[keep] for key, v in pl.items()}
+        k, model, flags, a_au, host_mass = k[keep], model[keep], flags[keep], a_au[keep], host_mass[keep]
+        pl["period"] = a_au_to_period(a_au, host_mass)
+    comp = host[k]
     result = {
-        "system": np.asarray(components["system"])[comp],
+        "system": sys_of_host[k],
         "component": comp,
+        "host_kind": np.where(h["kind"][k] == P_TYPE, "P", "S").astype(object),
+        "host_mass": host_mass,
         "role": np.asarray(components["role"])[comp],
         "model": model,
         "hmc_catalog": cat_id[k],
         "flags": flags,
-        "a_au": period_to_a_au(pl["period"], mass[k]),
+        "a_au": a_au,
     }
     result.update(pl)
+    if evolved is not None:
+        result = _add_pulsar_planets(result, systems, components, evolved, rng)
     return result
 
 
-def _add_giants(k, pl, planes, inner, rows, mass, host, components, giants: gp.GiantModel, rng):
+def _circumbinary(kk, p, idx, h, rows, binaries: bn.BinaryModel, rng):
+    """For the circumbinary hosts among ``idx``: replace HM-C planets of >= CB_SPLIT_RADIUS by
+    the empirical component, removing HM-C planets within 10 mutual Hill radii of it.
+    Returns the merged (host position, planets), sorted by host and period."""
+    cb_hosts = idx[h["kind"][idx] == P_TYPE]
+    if not len(cb_hosts):
+        return kk, p
+    big = (h["kind"][kk] == P_TYPE) & (p["planet_radius"] >= CB_SPLIT_RADIUS)
+    kk, p = kk[~big], {key: v[~big] for key, v in p.items()}
+    c = bn.draw_circumbinary(h["mass"][cb_hosts], h["a_min"][cb_hosts], h["a_max"][cb_hosts], h["p_bin"][cb_hosts],
+                             rng, binaries)
+    host = cb_hosts[c["host"]]
+    n = len(host)
+    if not n:
+        return kk, p
+    # Make room: HM-C planets too close to the new planet are removed.
+    mstar = h["mass"]
+    a_in = period_to_a_au(p["period"], mstar[kk])
+    clash = np.zeros(len(kk), dtype=bool)
+    for j in range(n):
+        sel = np.flatnonzero(kk == host[j])
+        if not len(sel):
+            continue
+        a2, m2 = c["a_au"][j], c["planet_mass"][j]
+        r_h = ((p["planet_mass"][sel] + m2) * EARTH_MASS_MSUN / (3.0 * mstar[host[j]])) ** (1.0 / 3.0) \
+            * 0.5 * (a_in[sel] + a2)
+        clash[sel] |= np.abs(a_in[sel] - a2) < rows[host[j], hmc.I_NHILL] * r_h
+    kk, p = kk[~clash], {key: v[~clash] for key, v in p.items()}
+    o = gp.orient(np.arange(n), h["plane"][host], n, rng, gp.GiantModel(incl_sigma_deg=1.4))
+    add = {
+        "period": c["period"], "planet_mass": c["planet_mass"], "planet_radius": c["planet_radius"],
+        "clusterid": np.full(n, CB_CLUSTER_ID, dtype=p["clusterid"].dtype), "ecc": c["ecc"], "omega": c["omega"],
+        "incl_mut": o["incl_mut"], "incl_invariable": o["incl_mut"], "asc_node_invariable": o["asc_node"],
+        "incl_sky": o["incl_sky"], "mean_anom": c["mean_anom"], "mass_init": c["planet_mass"],
+        "radius_init": c["planet_radius"], "lost_envelope": np.zeros(n, dtype=bool),
+    }
+    kk = np.concatenate([kk, host])
+    p = {key: np.concatenate([p[key], add[key]]) for key in p}
+    order = np.lexsort((p["period"], kk))
+    return kk[order], {key: v[order] for key, v in p.items()}
+
+
+def _evolve_orbits(k, pl, a_au, h, evolved: ev.EvolvedModel):
+    """Engulfment and adiabatic orbit expansion for planets of evolved hosts.
+    Returns (a_au, host mass today, mask of surviving planets)."""
+    old = h["evolved"][k]
+    r_eng = ev.engulfment_radius(pl["planet_mass"], h["mass_init"][k], h["r_max"][k], h["r_rgb"][k], h["alive"][k],
+                                 evolved)
+    keep = ~(old & (a_au < r_eng))
+    host_mass = np.where(old, h["mass_now"][k], h["mass"][k])
+    return np.where(old, a_au * h["mass"][k] / host_mass, a_au), host_mass, keep
+
+
+def _add_pulsar_planets(result, systems, components, evolved: ev.EvolvedModel, rng):
+    """Append the planets of neutron stars and re-sort."""
+    ns = np.flatnonzero(np.asarray(components["kind"]) == "NS")
+    p = ev.draw_pulsar_planets(len(ns), np.asarray(components["mass"], dtype=float)[ns], rng, evolved)
+    n = len(p["host"])
+    if not n:
+        return result
+    comp = ns[p["host"]]
+    o = gp.orient(p["host"], None, len(ns), rng, gp.GiantModel(incl_sigma_deg=evolved.pulsar_incl_sigma_deg))
+    n_comp = np.asarray(systems["n_components"])[np.asarray(components["system"])[comp]]
+    add = {
+        "system": np.asarray(components["system"])[comp], "component": comp,
+        "host_kind": np.full(n, "S", dtype=object), "host_mass": np.asarray(components["mass"], dtype=float)[comp],
+        "role": np.asarray(components["role"])[comp], "model": np.full(n, "pulsar", dtype=object),
+        "hmc_catalog": np.zeros(n, dtype=result["hmc_catalog"].dtype),
+        "flags": (FLAG_PULSAR | np.where(n_comp > 1, FLAG_MULTIPLE, 0)).astype(np.int32), "a_au": p["a_au"],
+        "period": p["period"], "planet_mass": p["planet_mass"], "planet_radius": p["planet_radius"],
+        "clusterid": np.full(n, PULSAR_CLUSTER_ID, dtype=result["clusterid"].dtype), "ecc": p["ecc"],
+        "omega": p["omega"], "incl_mut": o["incl_mut"], "incl_invariable": o["incl_mut"],
+        "asc_node_invariable": o["asc_node"], "incl_sky": o["incl_sky"], "mean_anom": p["mean_anom"],
+        "mass_init": p["planet_mass"], "radius_init": p["planet_radius"], "lost_envelope": np.zeros(n, dtype=bool),
+    }
+    out = {key: np.concatenate([result[key], add[key]]) for key in result}
+    kind = (out["host_kind"] == "P").astype(np.int8)
+    order = np.lexsort((out["period"], kind, out["component"]))
+    return {key: v[order] for key, v in out.items()}
+
+
+def _add_giants(k, pl, planes, inner, rows, mass, h, giants: gp.GiantModel, rng, limits=None):
     """Draw giants, reconcile the inner systems with them and merge; sorted by host position and period."""
     window = (rows[:, hmc.I_PMIN], rows[:, hmc.I_PMAX], rows[:, hmc.I_RMAX])
-    g = gp.draw_giants(mass, np.asarray(components["feh"], dtype=float)[host],
-                       np.asarray(components["luminosity"], dtype=float)[host], rng, giants, window=window)
+    g = gp.draw_giants(mass, h["feh"], h["luminosity"], rng, giants, window=window, a_limits=limits)
 
     def drop(sel):
         return {key: v[~sel] for key, v in pl.items()}
@@ -271,7 +377,7 @@ def _add_giants(k, pl, planes, inner, rows, mass, host, components, giants: gp.G
     # Hosts without an inner system get one random reference plane, shared with later components.
     missing = np.isnan(planes[:, 0])
     planes[missing] = gp._random_unit_vectors(missing.sum(), rng)
-    o = gp.orient(g["host"], planes, len(host), rng, giants)
+    o = gp.orient(g["host"], planes, len(mass), rng, giants)
     n = len(g["host"])
     gcols = {
         "period": g["period"], "planet_mass": g["planet_mass"], "planet_radius": g["planet_radius"],
@@ -288,9 +394,10 @@ def _add_giants(k, pl, planes, inner, rows, mass, host, components, giants: gp.G
     return k[order], {key: v[order] for key, v in pl.items()}
 
 
-def _add_small(k, pl, planes, rows, edge, colour, ml, mass, radius, teff, star_age, small: sp.SmallPlanetModel, rng):
+def _add_small(k, pl, planes, rows, edge, colour, ml, mass, radius, teff, star_age, small: sp.SmallPlanetModel, rng,
+               limits=None):
     """Draw small planets beyond P_max around the inner planets and giants; merged and sorted."""
-    inner_pl = np.flatnonzero(pl["clusterid"] >= 0)
+    inner_pl = np.flatnonzero((pl["clusterid"] >= 0) | (pl["clusterid"] == CB_CLUSTER_ID))
     last = inner_pl[np.r_[k[inner_pl][1:] != k[inner_pl][:-1], True]] if len(inner_pl) else inner_pl  # outermost
     giant = np.flatnonzero(pl["clusterid"] == GIANT_CLUSTER_ID)
     occ = np.concatenate([last, giant])
@@ -298,7 +405,7 @@ def _add_small(k, pl, planes, rows, edge, colour, ml, mass, radius, teff, star_a
                 "planet_mass": pl["planet_mass"][occ], "ecc": pl["ecc"][occ],
                 "giant": np.r_[np.zeros(len(last), dtype=bool), np.ones(len(giant), dtype=bool)]}
     s = sp.draw_small(mass, radius, teff, rows, edge, colour, ml, rng, small, occupied=occupied, planes=planes,
-                      age=star_age)
+                      age=star_age, a_limits=limits)
     n = len(s["host"])
     flags = np.where(s["bridge"], FLAG_BRIDGE, 0) | np.where(s["extrapolated"], FLAG_COLD_EXTRAP, 0)
     scols = {

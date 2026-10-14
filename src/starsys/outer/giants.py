@@ -52,9 +52,10 @@ Architecture:
 - Eccentricity: the 121 CLS giants beyond 0.1 au follow Beta(0.89, 2.49) (no significant
   difference inside and outside 1 au, KS p = 0.5; consistent with the Kipping 2013 global
   fit, p = 0.3). Because the stability conditioning against inner planets lowers giant
-  eccentricities (below), the prior ``ecc_beta`` = Beta(0.97, 2.36) is fitted so that the
-  conditioned eccentricities of giants around Sun-like stars match the CLS mean and
-  median.
+  eccentricities (below), the prior ``ecc_beta`` = Beta(0.98, 2.13) is fitted so that the
+  conditioned eccentricities of giants around single Sun-like stars (CLS is effectively a
+  single-star sample; their inner systems carry the binary model's single-star boost,
+  :mod:`starsys.binaries`) match the CLS mean and median.
 - Inclination relative to the inner (HM-C) system's invariable plane: Rayleigh,
   sigma = 11.8 deg (Masuda+2020, cold Jupiters vs inner super-Earths). Without an
   inner system the reference plane is isotropic.
@@ -148,7 +149,7 @@ class GiantModel:
     wide_m_range: tuple = (2.0 * 317.83, 13.0 * 317.83)
     wide_a_range: tuple = (10.0, 100.0)
     # Orbits.
-    ecc_beta: tuple = (0.967, 2.355)  # prior; conditioned on the inner system it matches CLS
+    ecc_beta: tuple = (0.983, 2.126)  # prior; conditioned on the inner system it matches CLS
     incl_sigma_deg: float = 11.8
 
 
@@ -356,7 +357,7 @@ def _draw_orbit(component, mstar, rng, model: GiantModel):
 
 
 def draw_giants(mass, feh, luminosity, rng, model: GiantModel = GiantModel(), planes=None, window=None,
-                n_redraw: int = 20) -> dict[str, np.ndarray]:
+                n_redraw: int = 20, a_limits=None) -> dict[str, np.ndarray]:
     """Draw giant planets for an array of host stars.
 
     Parameters
@@ -369,6 +370,9 @@ def draw_giants(mass, feh, luminosity, rng, model: GiantModel = GiantModel(), pl
     window
         Optional HM-C window per host: (P_min, P_max, R_max) arrays. Inside it, giants
         smaller than R_max are not drawn.
+    a_limits
+        Optional (a_min, a_max) arrays per host (au): dynamical limits set by stellar
+        companions. Giants drawn outside are removed; redraws must fall inside.
 
     Returns
     -------
@@ -422,7 +426,12 @@ def draw_giants(mass, feh, luminosity, rng, model: GiantModel = GiantModel(), pl
         p_ = a_au_to_period(a_, mass[h])
         return (p_ >= window[0][h]) & (p_ <= window[1][h]) & (r_ < window[2][h])
 
-    ok = ~in_window(host, a, r)
+    def outside(h, a_):
+        if a_limits is None:
+            return np.zeros(np.shape(a_), dtype=bool)
+        return (a_ < a_limits[0][h]) | (a_ > a_limits[1][h])
+
+    ok = ~in_window(host, a, r) & ~outside(host, a)
     host, component, m, a, e, r = host[ok], component[ok], m[ok], a[ok], e[ok], r[ok]
 
     # Placement: in order of decreasing mass per host, redrawing orbits that are unstable.
@@ -436,7 +445,7 @@ def draw_giants(mass, feh, luminosity, rng, model: GiantModel = GiantModel(), pl
                 if attempt:
                     a[j], e[j] = _draw_orbit(component[j], mass[h], rng, model)
                     r[j] = _giant_radius_scalar(m[j], SOLAR_FLUX_CGS * lum[h] / a[j] ** 2, rng)
-                    if in_window(h, a[j], r[j]):
+                    if in_window(h, a[j], r[j]) or outside(h, a[j]):
                         continue
                 if _stable_with_neighbours(a[j], m[j], e[j], *occ, mass[h]):
                     pos = bisect.bisect_left(occ[0], a[j])

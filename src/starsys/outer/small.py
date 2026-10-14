@@ -387,7 +387,7 @@ def _draw_ecc(n, rng, model):
 # --- the generator ---------------------------------------------------------------------
 
 def draw_small(mstar, rstar, teff, rows, table_rows, colour, ml, rng, model: SmallPlanetModel = SmallPlanetModel(),
-               occupied=None, planes=None, age=None) -> dict[str, np.ndarray]:
+               occupied=None, planes=None, age=None, a_limits=None) -> dict[str, np.ndarray]:
     """Draw small planets beyond HM-C's P_max for an array of hosts.
 
     Parameters
@@ -406,6 +406,9 @@ def draw_small(mstar, rstar, teff, rows, table_rows, colour, ml, rng, model: Sma
         Optional (n, 3) reference-plane normals; NaN rows get a random plane.
     age
         Per-host age (Gyr) for photoevaporation; default the HM-C ``system_age``.
+    a_limits
+        Optional (a_min, a_max) arrays per host (au), dynamical limits set by stellar
+        companions: candidates outside are dropped and redraws must fall inside.
 
     Returns
     -------
@@ -422,6 +425,12 @@ def draw_small(mstar, rstar, teff, rows, table_rows, colour, ml, rng, model: Sma
     host = np.repeat(np.arange(n), rng.poisson(hosts.expected))
     a, m = hosts.draw(host, rng)
     e = _draw_ecc(len(host), rng, model)
+    if a_limits is not None:
+        inside = (a >= a_limits[0][host]) & (a <= a_limits[1][host])
+        host, a, m, e = host[inside], a[inside], m[inside], e[inside]
+
+    def outside(h, a_):
+        return a_limits is not None and not (a_limits[0][h] <= a_ <= a_limits[1][h])
 
     # Placement, by host in order of decreasing mass.
     keep = np.ones(len(host), dtype=bool)
@@ -446,6 +455,8 @@ def draw_small(mstar, rstar, teff, rows, table_rows, colour, ml, rng, model: Sma
                 if attempt:
                     aa, mm = hosts.draw(np.array([h]), rng)
                     a[j], m[j], e[j] = aa[0], mm[0], _draw_ecc(1, rng, model)[0]
+                    if outside(h, a[j]):
+                        continue
                 if _fits(a[j], m[j], e[j], occ, mstar[h], n_hill):
                     pos = bisect.bisect_left(occ[0], a[j])
                     for lst, val in zip(occ, (a[j], m[j], e[j], False)):

@@ -134,9 +134,18 @@ dwarf sequence with a Kepler-calibrated offset and scatter; validated on Kepler 
   values (Neil & Rogers 2020), below Bryson+2021: it is set by HM-C's envelope model.
 - **Binaries:** S-type stability limit (Holman & Wiegert 1999); planet suppression
   in close binaries (Moe & Kratter 2021); circumbinary (P-type) occurrence.
+  Implemented in `starsys.binaries` with host rows in `starsys.hosts` (validated:
+  `docs/validation/planets.md` §4.5). Transit- and microlensing-fitted rates are field
+  averages over binaries, so they are boosted to single-star rates (B ≈ 1.2–1.4, from a mock
+  magnitude-limited Kepler sample of the population). The inner pair hosts circumbinary
+  planets: the single-star models outside the HW99 limit, plus an empirical 4–10 R⊕ component
+  calibrated to Armstrong+2014.
 - **Evolved stars and white dwarfs:** engulfment inside the maximum stellar radius,
   adiabatic orbit expansion by M_initial/M_final; WD planet occurrence tied to
   pollution rates.
+  Implemented in `starsys.evolved` (validated: §4.6): planets drawn on the progenitor's
+  main-sequence state, MIST maximum radii, Mustill & Villaver (2012) tidal engulfment
+  ratios, adiabatic expansion; rare flagged pulsar planets; none for black holes.
 
 ### 3.4 Moons (theory-driven; no exomoon detections to fit)
 
