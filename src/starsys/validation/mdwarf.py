@@ -84,7 +84,7 @@ def ment_residuals(pl, n_stars):
 
 def run(sample, model, seed=1):
     systems, comp = sample
-    return attach_planets(systems, comp, seed=seed, mdwarf=model, giants=None)
+    return attach_planets(systems, comp, seed=seed, mdwarf=model, giants=None, small=None)
 
 
 def teff_sample(teff_range, n_target=20_000, seed=0):

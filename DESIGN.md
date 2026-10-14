@@ -128,6 +128,10 @@ dwarf sequence with a Kepler-calibrated offset and scatter; validated on Kepler 
 - **Small planets beyond 300 d:** microlensing mass-ratio function (Suzuki+2016;
   Zang+2025) near and beyond the snow line; η⊕ constraints (Bryson+2021). Packing
   enforced with the same Hill/AMD machinery.
+  Implemented in `starsys.outer.small` (validated: `docs/validation/planets.md` §4.4):
+  Zang+2025's lower mass-ratio Gaussian beyond the snow line, HM-C's own density at
+  300 d, and a log-linear bridge between them (flagged). η⊕ comes out at photoevaporation-aware
+  values (Neil & Rogers 2020), below Bryson+2021: it is set by HM-C's envelope model.
 - **Binaries:** S-type stability limit (Holman & Wiegert 1999); planet suppression
   in close binaries (Moe & Kratter 2021); circumbinary (P-type) occurrence.
 - **Evolved stars and white dwarfs:** engulfment inside the maximum stellar radius,

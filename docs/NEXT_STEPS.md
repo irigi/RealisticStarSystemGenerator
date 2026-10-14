@@ -1,24 +1,26 @@
-# Next steps (as of 2026-10-13)
+# Next steps (as of 2026-10-14)
 
 Status: phases 1–3 of `DESIGN.md` are done and committed on branch `rewrite-starsys`
 (data layer, validated HM-C port, stellar population validated against the 20-pc
-census). Phase 4 (attaching planets to stars) is in progress: 4.1–4.3 are done, 4.4 is next.
+census). Phase 4 (attaching planets to stars) is in progress: 4.1–4.4 are done, 4.5 is next.
 
 ## Resuming
 
 ```bash
 source .venv/bin/activate
-pytest -q                                  # 27 tests, all should pass
+pytest -q                                  # 29 tests, all should pass
 python -m starsys.validation.census        # stellar population vs 20-pc census
 python -m starsys.validation.hmc --catalogs 6-25 --criterion hill   # HM-C port check
 python -m starsys.validation.planets --catalogs 1-30                # planet glue on Kepler stars
 python -m starsys.validation.mdwarf                                 # M dwarfs vs DC15, Hsu+2020, Ment+2023, K2 UCDs
 python -m starsys.validation.giants                                 # giants vs CLS, RV, direct imaging
+python -m starsys.validation.small                                  # small planets > 300 d vs η⊕, microlensing
 ```
 
 `catalogs/` and `data/` are gitignored. If `data/` is lost, rebuild the SysSim
 parquet cache with `python -m starsys.cache <models>`; the MIST grid and primary-mass
-weights under `data/stellar/` are rebuilt on first use.
+weights under `data/stellar/` are rebuilt on first use, as is the HM-C edge table under
+`data/outer/` (~2 min).
 
 ## Phase 4, in recommended order
 
@@ -83,12 +85,29 @@ beyond metallicity (the largest samples find none at average metallicity; Bonomo
 
 Follow-ups: B9–B14 in the backlog below.
 
-### 4.4 Small planets beyond 300 d
+### 4.4 Small planets beyond 300 d — done (2026-10-14)
 
-- Microlensing mass-ratio function (Suzuki+2016; Zang+2025) beyond the snow line.
-- Bridge 300 d to the snow line with η⊕ constraints (Bryson+2021), which are
-  extrapolations themselves; carry the uncertainty.
-- Packing with the same Hill/AMD machinery.
+`starsys.outer.small`, attached by `attach_planets` (`small=` option; `model` =
+"outer_small", `clusterid` −2). Planets of 0.1–30 M⊕ from HM-C's P_max to 10 snow-line
+radii (a_sl = 2.7 au M★/M☉):
+
+- beyond a_sl: Zang+2025's lower mass-ratio Gaussian (KMTNet), flat in ln a, masses ∝ M★;
+- at P_max: HM-C's own edge density and mass distribution (per posterior catalog and Teff,
+  measured with the port, cached in `data/outer`);
+- in between: log density interpolated linearly in ln a (stays lognormal in mass),
+  flagged `bridge`; beyond a_sl outside the measured q, a or host mass, `cold_extrapolated`;
+- uncertainty: Zang's parameters drawn per system, HM-C's anchor follows the posterior
+  catalog;
+- packing: HM-C's 10 mutual Hill radii plus AMD-Hill-or-Petrovich against the outermost
+  inner planet, giants and each other (98.9% kept). HM-C radii and photoevaporation.
+
+Checks: reproduces Zang+2025 over the measured q range (and the 4.3 giants reproduce
+Zang's giant peak independently); η⊕ = 0.09 (conservative), 1.3σ below Bryson+2021's
+lower bound but matching photoevaporation-aware estimates (Neil & Rogers 2020) and
+Hsu+2019's range. `python -m starsys.validation.small`; results in
+`docs/validation/planets.md`.
+
+Follow-ups: B15–B19 in the backlog below.
 
 ### 4.5 Binaries
 
@@ -166,6 +185,29 @@ Giant planets (from 4.3):
   multiplicity (CLS IV finds differences).
 - **B14** Giants' angles refer to the inner system's invariable plane; recompute the
   whole system's invariable plane in phase 5.
+
+Small planets beyond 300 d (from 4.4):
+
+- **B15** Wide orbits: Poleski+2021 find 1.4 +0.9/−0.6 planets per star with
+  1e-4 < q < 0.033 at s = 2–6 (5 planets, occurrence rising as s^1.1); the model gives 0.04,
+  consistent with Zang+2025 at s ~ 1 and a flat extrapolation (Suzuki+2016's s^0.49 gives
+  0.41). Revisit with newer KMTNet wide-orbit statistics; if confirmed, it affects the giants
+  (Fulton's s(a) falls beyond 3.6 au) as well as small planets.
+- **B16** η⊕ is set by the radius model, not the occurrence: the model has 0.50 planets per
+  Sun-like star in the conservative HZ, but HM-C gives every planet an initial H/He envelope,
+  so most are 1.5–3 R⊕. An intrinsically rocky population (Neil & Rogers 2020 models 3–4)
+  or water-rich planets beyond the snow line would change radii; any change inside 300 d
+  needs an HM-C re-fit. Do with phase 5 radii.
+- **B17** Bridge shape: log-linear in ln a, anchored at a_sl, is a choice, not a
+  measurement. The density at a fixed mass dips mid-bridge (the anchors' mass distributions differ). Sample the
+  anchor position (1–2 a_sl) or the interpolation as a model uncertainty, and check against
+  long-baseline RV for Sun-like stars (cold Neptunes at 1–3 au).
+- **B18** Microlensing hosts are mostly 0.1–1 M☉; FGK/A hosts assume a universal mass ratio
+  and a/a_sl. No metallicity dependence. Zang's parameters are drawn independently (their
+  Dryad MCMC chains would keep correlations). Projected-separation mapping in the check uses
+  a single lens geometry.
+- **B19** Orbits of outer small planets (Rayleigh e σ = 0.05, i σ = 1.4°) continue HM-C's
+  multis; nothing measures them. No small planets beyond 10 a_sl.
 
 Host mapping and age (from 4.1, low priority):
 

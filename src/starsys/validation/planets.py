@@ -46,7 +46,7 @@ def _run_glue(params: HMCParams, stars: pd.DataFrame, seed: int):
         "teff": stars["teff"].to_numpy(), "age_gyr": np.full(n, params.system_age),
     }
     systems = {"age_gyr": np.full(n, params.system_age), "n_components": np.ones(n, int)}
-    pl = attach_planets(systems, components, seed=seed, params=params, mdwarf=None, giants=None)
+    pl = attach_planets(systems, components, seed=seed, params=params, mdwarf=None, giants=None, small=None)
     df = pd.DataFrame({k: v for k, v in pl.items() if k not in ("system", "role", "model")})
     df["target"] = df.pop("component")
     return np.bincount(df["target"], minlength=n), df

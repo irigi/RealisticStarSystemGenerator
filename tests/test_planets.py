@@ -33,7 +33,7 @@ def test_attach_planets_structure(population):
     assert np.all(np.diff(pl["component"]) >= 0) and np.all(np.diff(pl["period"])[same] > 0)
     inner = np.isin(pl["model"], ["hmc", "hmc_m"])
     assert np.all((pl["period"][inner] >= 0.5) & (pl["period"][inner] <= 300.0))
-    assert set(np.unique(pl["model"])) <= {"hmc", "hmc_m", "giant", "hot_jupiter", "wide_giant"}
+    assert set(np.unique(pl["model"])) <= {"hmc", "hmc_m", "giant", "hot_jupiter", "wide_giant", "outer_small"}
     fgk = pl["model"] == "hmc"
     assert np.all(pl["period"][fgk] >= 3.0)
     assert set(np.unique(pl["hmc_catalog"])) <= set(planets.hmc_posterior()[0])
@@ -53,7 +53,7 @@ def test_flags(population):
     young = (pl["flags"] & planets.FLAG_YOUNG) > 0
     assert np.array_equal(young, comp["age_gyr"][pl["component"]] < planets.YOUNG_AGE_GYR)
     # Without the extension, M dwarfs are out of HM-C's colour domain.
-    plain = planets.attach_planets(systems, comp, seed=5, mdwarf=None)
+    plain = planets.attach_planets(systems, comp, seed=5, mdwarf=None, small=None)
     cool = comp["teff"][plain["component"]] < 3500
     assert ((plain["flags"][cool] & planets.FLAG_COLOUR) > 0).all()
     assert set(np.unique(plain["model"])) <= {"hmc", "giant", "hot_jupiter", "wide_giant"}
@@ -83,7 +83,7 @@ def test_brown_dwarfs_get_few_small_planets():
     assert 0 < hosts < 0.5 * n
     assert np.median(pl["planet_radius"]) < 1.5
     assert (pl["flags"] & planets.FLAG_SUBSTELLAR).all()
-    assert set(np.unique(pl["model"])) == {"hmc_m"}  # no giants below 0.1 Msun
+    assert set(np.unique(pl["model"])) == {"hmc_m", "outer_small"}  # no giants below 0.1 Msun
 
 
 def test_reproducible_and_fixed_params(population):
@@ -102,8 +102,8 @@ def test_per_star_age_reduces_stripping_of_young_hosts():
             "phase": np.zeros(n), "mass": np.ones(n), "radius": np.ones(n), "teff": np.full(n, 5772.0),
             "age_gyr": np.full(n, 0.5)}
     systems = {"age_gyr": np.full(n, 0.5), "n_components": np.ones(n, int)}
-    fixed = planets.attach_planets(systems, comp, seed=1, params=HMCParams(), giants=None)
-    young = planets.attach_planets(systems, comp, seed=1, params=HMCParams(), age="star", giants=None)
+    fixed = planets.attach_planets(systems, comp, seed=1, params=HMCParams(), giants=None, small=None)
+    young = planets.attach_planets(systems, comp, seed=1, params=HMCParams(), age="star", giants=None, small=None)
     assert young["lost_envelope"].mean() < 0.5 * fixed["lost_envelope"].mean()
 
 
@@ -162,3 +162,71 @@ def test_giant_samplers_match_their_densities():
     a = gp.draw_separation(np.full(200_000, 0.1), np.full(200_000, 30.0), rng, model)
     frac = gp.separation_integral(1, 5, model) / gp.separation_integral(0.1, 30, model)
     assert ((a >= 1) & (a < 5)).mean() == pytest.approx(frac, abs=0.005)
+
+
+def test_small_planets_beyond_pmax():
+    from starsys.outer.giants import pair_stable
+    from starsys.outer.small import _hill_ok
+
+    systems, comp = _sun_like(20_000, feh=0.2)
+    pl = planets.attach_planets(systems, comp, seed=6, params=HMCParams())
+    o = pl["model"] == "outer_small"
+    assert o.sum() > 10_000 and (pl["clusterid"][o] == planets.SMALL_CLUSTER_ID).all()
+    assert (pl["period"][o] >= 300.0 * (1 - 1e-9)).all()
+    assert (pl["mass_init"][o] >= 0.1).all() and (pl["mass_init"][o] <= 30.0).all()
+    assert (pl["a_au"][o] <= 27.0 * (1 + 1e-9)).all()  # 10 snow-line radii of a 1 Msun star
+    bridge = (pl["flags"] & planets.FLAG_BRIDGE) > 0
+    assert np.array_equal(bridge[o], pl["a_au"][o] < 2.7)
+    assert not bridge[~o].any()
+    log_q = np.log10(pl["mass_init"] * 3.0035e-6)
+    extrap = (pl["flags"] & planets.FLAG_COLD_EXTRAP) > 0
+    assert np.array_equal(extrap[o], ((pl["a_au"] >= 2.7) & ((log_q < -5.2) | (pl["a_au"] > 10.8)))[o])
+    # Every adjacent pair involving a small outer planet is stable, with HM-C's Hill spacing
+    # unless the neighbour is a giant.
+    giant = pl["clusterid"] == planets.GIANT_CLUSTER_ID
+    same = pl["component"][1:] == pl["component"][:-1]
+    pairs = np.flatnonzero(same & (o[1:] | o[:-1]))
+    assert len(pairs) > 5000
+    for i in pairs[:3000]:
+        m1, m2 = pl["mass_init"][i] if o[i] else pl["planet_mass"][i], pl["mass_init"][i + 1]
+        a1, a2, e1, e2 = pl["a_au"][i], pl["a_au"][i + 1], pl["ecc"][i], pl["ecc"][i + 1]
+        assert pair_stable(m1, m2, a1, e1, a2, e2, 1.0)
+        if not (giant[i] or giant[i + 1]):
+            assert _hill_ok(m1, m2, a1, a2, 1.0, 10.0)
+
+
+def test_small_planet_density_is_continuous_and_normalised():
+    from starsys.outer import small as sp
+
+    model = sp.SmallPlanetModel(sample_uncertainty=False)
+    ml = sp.draw_ml_params(2, np.random.default_rng(0), model)
+    mstar = np.array([1.0, 0.2])
+    c, mu, sd = sp.outer_anchor(mstar, ml, model)
+    # The lower Gaussian integrates to Zang+2025's rate over the measured log q range.
+    lo, hi = (x * np.log(10) + np.log(mstar[0] / 3.0035e-6) for x in model.ml_log_q_range)
+    y = np.linspace(lo, hi, 4001)
+    integral = np.trapezoid(np.exp(c[0] - 0.5 * ((y - mu[0]) / sd[0]) ** 2), y) * np.log(10)
+    assert integral == pytest.approx(model.ml_rate[0], rel=1e-3)
+    # Continuity: at P_max the density is HM-C's, beyond the snow line the microlensing one.
+    n_in, mu_in, s_in = np.array([1.2, 1.2]), np.array([0.4, -1.0]), np.array([1.5, 1.4])
+    a_in = np.array([0.85, 0.6])  # the 0.2 Msun snow line (0.54 au) is inside the second
+    h = sp._Hosts(mstar, a_in, (n_in, mu_in, s_in), (c, mu, sd), model)
+    ylo, yhi = np.log(model.m_min), np.log(model.m_max)
+    at_in = sp._marginal(*h._gauss(np.log(a_in), np.arange(2)), ylo, yhi)
+    trunc = [np.diff(sp.ndtr((np.array([ylo, yhi]) - m) / s))[0] for m, s in zip(mu_in, s_in)]
+    assert at_in[0] == pytest.approx(n_in[0] * trunc[0], rel=1e-6)
+    out = sp._marginal(*h._gauss(np.log(3 * h.a_sl), np.arange(2)), ylo, yhi)
+    direct = sp._marginal(c, mu, sd, ylo, yhi)
+    assert np.allclose(out, direct)
+    # No bridge when the snow line is inside a(P_max): microlensing density from P_max on.
+    assert at_in[1] == pytest.approx(direct[1], rel=1e-6)
+    # Sampler matches the cumulative counts.
+    rng = np.random.default_rng(1)
+    a, m = h.draw(np.zeros(200_000, dtype=int), rng)
+    frac = (h.cum_at(np.log(2.7 * 4), [0]) - h.cum_at(np.log(2.7), [0]))[0] / h.expected[0]
+    assert ((a >= 2.7) & (a < 10.8)).mean() == pytest.approx(frac, abs=0.005)
+    assert (m >= model.m_min).all() and (m <= model.m_max).all()
+    far = a > 5.0
+    z = (yhi - mu[0]) / sd[0]  # upper truncation at 30 Earth masses (the lower one is negligible)
+    truncated_mean = mu[0] - sd[0] * np.exp(-0.5 * z**2) / np.sqrt(2 * np.pi) / sp.ndtr(z)
+    assert np.log(m[far]).mean() == pytest.approx(truncated_mean, abs=0.02)

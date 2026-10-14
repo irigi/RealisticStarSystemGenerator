@@ -113,6 +113,30 @@ def dwarf_bp_rp_sequence():
     return np.array(teffs)[order], np.array(colours)[order]
 
 
+@lru_cache(maxsize=1)
+def dwarf_mass_radius_sequence():
+    """(Teff, mass in Msun, radius in Rsun) of the Pecaut & Mamajek dwarf sequence where the
+    table gives a mass (F0-L2, 7220-2060 K), ascending in Teff."""
+    rows = []
+    for line in MAMAJEK_FILE.read_text().splitlines():
+        parts = line.split()
+        if len(parts) < 31 or line.startswith("#") or not parts[0].endswith("V"):
+            continue
+        try:
+            rows.append((float(parts[1]), float(parts[30]), float(parts[6])))
+        except ValueError:
+            continue
+    t, m, r = np.array(sorted(rows)).T
+    return t, m, r
+
+
+def dwarf_mass_radius(teff):
+    """Main-sequence mass and radius at a given Teff (Mamajek; clamped outside 2060-7220 K)."""
+    t, m, r = dwarf_mass_radius_sequence()
+    teff = np.asarray(teff, dtype=float)
+    return np.interp(teff, t, m), np.interp(teff, t, r)
+
+
 def bp_rp_from_teff(teff, kepler_scale=True):
     """De-reddened Gaia bp-rp of a dwarf from Teff (Mamajek sequence, 2350-10700 K;
     clamped outside). With ``kepler_scale`` the Kepler-table offset above is added, so

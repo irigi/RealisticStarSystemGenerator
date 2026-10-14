@@ -191,7 +191,7 @@ def conditioned_ecc(sample, model, seed=10):
     """Eccentricities of warm/cold giants at 0.1-10 au after attachment to the inner systems."""
     from ..planets import attach_planets
 
-    pl = attach_planets(*sample, seed=seed, giants=model)
+    pl = attach_planets(*sample, seed=seed, giants=model, small=None)
     m = (pl["model"] == "giant") & (pl["a_au"] >= 0.1) & (pl["a_au"] < 10)
     return pl["ecc"][m]
 
@@ -315,8 +315,8 @@ def report_population(n_systems: int = 100_000):
     from ..stars.population import draw_systems
 
     systems, comp = draw_systems(n_systems, seed=7)
-    with_g = attach_planets(systems, comp, seed=8)
-    without = attach_planets(systems, comp, seed=8, giants=None)
+    with_g = attach_planets(systems, comp, seed=8, small=None)
+    without = attach_planets(systems, comp, seed=8, giants=None, small=None)
     hosts = hmc_hosts(comp)
     print(f"\nStellar population ({n_systems} systems, {hosts.sum()} planet hosts):")
     print(f"  {'host mass (Msun)':<18}{'hosts':>8}{'% giant':>9}{'% HJ':>7}{'% wide':>8}{'inner/star':>12}{'(no giants)':>12}")

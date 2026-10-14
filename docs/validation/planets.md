@@ -261,3 +261,105 @@ Tensions:
 The inner system loses 4% of its planets per star around Sun-like stars and 8% at
 1.2–1.6 M☉, against Kepler-fitted HM-C (backlog B11). Attaching planets with giants
 takes ~10 s per 100,000 systems (~6.5 s without).
+
+## 4.4 Small planets beyond 300 d (`starsys.outer.small`)
+
+Command: `python -m starsys.validation.small` (200,000 systems from the stellar population,
+all planet models attached; 2026-10-14). Rates are intrinsic, per main-sequence host.
+
+### Model
+
+Planets of 0.1–30 M⊕ from HM-C's P_max (300 d) to 10 snow-line radii,
+a_sl = 2.7 au (M★/M☉). Two anchors, with the log density interpolated linearly
+in ln a between them:
+
+- **Beyond a_sl:** the lower ("super-Earth") Gaussian of Zang+2025's mass-ratio function
+  (KMTNet; log q_peak = −4.67, width 0.55 dex, 0.57 ± 0.13 planets per star per dex of
+  separation over −5.2 < log q < −1.5), flat in ln a. Masses scale with M★ (universal
+  mass ratio; Pascucci+2018).
+- **At P_max:** HM-C's own output at 150–300 d (planets per host per ln P, mean and SD of
+  ln initial mass), measured per posterior catalog and Teff with the port and scaled by
+  the host's f_swp. Typical values: 0.93 per host per ln P for FGK, 1.3 for M dwarfs;
+  ±13% across the posterior.
+
+Both anchors are lognormal in mass, so the bridge stays lognormal, with a median that moves
+from ~1.5 M⊕ (HM-C) to ~7 M★/M☉ M⊕ (microlensing). The microlensing parameters are drawn
+per system from Zang+2025's posteriors; the HM-C anchor follows the system's posterior
+catalog. Radii use HM-C's mass–radius relation and photoevaporation. Planets are packed
+with HM-C's 10 mutual Hill radii and AMD-Hill-or-Petrovich stability against the
+outermost inner planet, the giants and each other: 98.9% of the drawn planets are kept.
+
+### Profile across 300 d (dN/d ln P, planets < 30 M⊕)
+
+| P (d) | early M 0.35–0.65 M☉ | K 0.65–0.85 | G 0.85–1.15 | F 1.15–1.5 |
+|---|---|---|---|---|
+| 75–150 | 1.06 | 0.83 | 0.69 | 0.54 |
+| 150–300 | 1.12 | 0.87 | 0.73 | 0.56 |
+| 300–600 | 0.43 | 0.44 | 0.43 | 0.35 |
+| 600–1200 | 0.26 | 0.29 | 0.30 | 0.26 |
+| 1200–2400 | 0.24 | 0.22 | 0.22 | 0.20 |
+| 2400–19200 | 0.24 | 0.21–0.23 | 0.21–0.22 | 0.18–0.21 |
+
+The density is continuous at 300 d per unit mass, but it falls by ~3× over the bridge,
+because the two anchors differ. HM-C's edge is dominated by sub-Earths and Earths
+(median 1.5 M⊕, a quarter below 0.5 M⊕). Microlensing finds few planets below
+q ~ 1e-5 and peaks at 7 M★/M☉ M⊕. Above 2 M⊕, the drop is only ~2×. For M dwarfs the
+same contrast is in the data: Suzuki+2016 compare 3.0 planets per star at DC15's peak
+with 0.43 from microlensing over an equal log range.
+
+Per host, small outer planets per star: 0.76 (0.08–0.3 M☉, mostly bare: 80%
+stripped or born bare), 1.16 (0.3–0.6), 1.26 (0.6–0.9), 1.31 (0.9–1.2; 0.56 of them in
+the bridge), 1.26 (1.2–1.6), 1.09 (1.6–2.5). Median mass 1.1 M⊕ (late M) to 6 M⊕
+(A stars). 22% of outer small planets are flagged `bridge` and 47% `cold_extrapolated`
+(mostly log q < −5.2 or a > 4 a_sl).
+
+### η⊕ and other long-period rates
+
+| Check | Model | Published |
+|---|---|---|
+| η⊕, conservative HZ, 0.5–1.5 R⊕, 4800–6300 K | 0.094 (HM-C 0.054, outer 0.040) | 0.37 +0.48/−0.21 to 0.60 +0.90/−0.36 (Bryson+2021) |
+| η⊕, optimistic HZ | 0.166 | 0.58 +0.73/−0.33 to 0.88 +1.28/−0.51 (Bryson+2021) |
+| planets of any size in the conservative HZ | 0.50 | — |
+| 0.75–1.5 R⊕, 237–500 d, FGK | 0.056 | < 0.27 (84%); robust range 0.03–0.40 (Hsu+2019) |
+| 0.8–1.2 R⊕, 292–438 d, 4700–6500 K | 0.010 | 0.008–0.009 with envelope loss, 0.076 without (Neil & Rogers 2020); 0.1 +1.9/−0.1 (Burke+2015) |
+
+The model has about as many HZ planets as Bryson+2021, but most are 1.5–3 R⊕: HM-C
+starts every planet with an H/He envelope, and at HZ irradiation few lose it. Bryson's
+η⊕ assumes the radius distribution measured at shorter periods carries on unchanged. With
+envelope loss modelled, Neil & Rogers (whose retention law HM-C uses) find η⊕ an order
+of magnitude lower, which the model matches. So the model sits 1.3σ below Bryson's lower
+bound and inside the photoevaporation-aware estimates and Hsu+2019's range. η⊕ is
+therefore set by the radius (composition) model, not by the bridge (backlog B16).
+
+### Microlensing
+
+Mass-ratio function at projected s = 0.5–2 Einstein radii (2.5 au at 0.5 M☉), around
+main-sequence 0.1–1 M☉ hosts weighted by M^0.5, per dex of q per dex of s:
+
+| log q | Model (all) | Small planets | Zang+2025 double Gaussian |
+|---|---|---|---|
+| −6.0 to −5.5 | 0.149 | 0.149 | 0.081 (not measured) |
+| −5.5 to −5.0 | 0.375 | 0.375 | 0.297 (not measured) |
+| −5.0 to −4.5 | 0.515 | 0.515 | 0.496 |
+| −4.5 to −4.0 | 0.371 | 0.371 | 0.380 |
+| −4.0 to −3.5 | 0.110 | 0.089 | 0.135 |
+| −3.5 to −3.0 | 0.040 | 0.001 | 0.036 |
+| −3.0 to −2.5 | 0.041 | — | 0.052 |
+| −2.5 to −2.0 | 0.036 | — | 0.032 |
+| −2.0 to −1.5 | 0.014 | — | 0.004 |
+
+Small planets reproduce the lower Gaussian over the measured range, by construction. The
+giants (the CLS-based model of 4.3, scaled to these hosts) reproduce Zang's upper Gaussian
+independently. Below log q = −5.2 the model has more planets than the median
+Gaussian: the per-system parameter draws and the bridge planets (a < a_sl) both add
+low-q planets.
+
+**Wide orbits:** Poleski+2021 (OGLE, 5 planets, s = 2–6, 1e-4 < q < 0.033) find 1.4
++0.9/−0.6 planets per star; the model gives 0.04 (0.01 of them below 30 M⊕),
+consistent with Zang+2025 and Suzuki+2016 at s ~ 1 and a flat extrapolation. Suzuki+2016's
+function with their s^0.49 extrapolates to 0.41. This 2–3σ tension is open (backlog
+B15).
+
+Attaching all planet models takes ~15 s per 100,000 systems (~8 s without small planets).
+The first use builds the HM-C edge table (~2 min for the 100 posterior catalogs, cached in
+`data/outer`).
