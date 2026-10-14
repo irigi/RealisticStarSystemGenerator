@@ -279,6 +279,17 @@ class _Hosts:
         # Rows offset so that one searchsorted inverts every host's cumulative count.
         self._step = self.expected.max(initial=0.0) + 1.0
         self._flat = (self.cum + self._step * np.arange(len(self.cum))[:, None]).ravel()
+        # Cumulative-count window that draws are restricted to (see :meth:`restrict`).
+        self.c_lo = np.zeros(len(self.mstar))
+        self.c_hi = self.expected.copy()
+
+    def restrict(self, a_lo, a_hi):
+        """Restrict draws to a_lo <= a <= a_hi (au, per host); returns the expected number inside."""
+        idx = np.arange(len(self.mstar))
+        with np.errstate(divide="ignore"):
+            self.c_lo = self.cum_at(np.log(np.maximum(a_lo, 1e-300)), idx)
+            self.c_hi = np.maximum(self.cum_at(np.log(np.minimum(a_hi, 1e300)), idx), self.c_lo)
+        return self.c_hi - self.c_lo
 
     def _gauss(self, u, idx, extra_dim=False):
         def take(v):
@@ -301,7 +312,7 @@ class _Hosts:
     def draw(self, idx, rng):
         """(a in au, mass in Earth masses) for hosts ``idx`` (one draw each)."""
         idx = np.asarray(idx, dtype=np.int64)
-        target = rng.random(len(idx)) * self.expected[idx]
+        target = self.c_lo[idx] + rng.random(len(idx)) * (self.c_hi[idx] - self.c_lo[idx])
         # Inverse CDF on each host's grid, vectorised by offsetting the rows.
         ng = self.model.n_grid
         j = np.searchsorted(self._flat, target + self._step * idx, side="right") - idx * ng - 1
@@ -408,7 +419,7 @@ def draw_small(mstar, rstar, teff, rows, table_rows, colour, ml, rng, model: Sma
         Per-host age (Gyr) for photoevaporation; default the HM-C ``system_age``.
     a_limits
         Optional (a_min, a_max) arrays per host (au), dynamical limits set by stellar
-        companions: candidates outside are dropped and redraws must fall inside.
+        companions: the density is truncated to them.
 
     Returns
     -------
@@ -422,15 +433,10 @@ def draw_small(mstar, rstar, teff, rows, table_rows, colour, ml, rng, model: Sma
     n = len(mstar)
     a_in = period_to_a_au(rows[:, hmc.I_PMAX], mstar)
     hosts = _Hosts(mstar, a_in, inner_anchor(rows, table_rows, teff, colour), outer_anchor(mstar, ml, model), model)
-    host = np.repeat(np.arange(n), rng.poisson(hosts.expected))
+    expected = hosts.expected if a_limits is None else hosts.restrict(*a_limits)
+    host = np.repeat(np.arange(n), rng.poisson(expected))
     a, m = hosts.draw(host, rng)
     e = _draw_ecc(len(host), rng, model)
-    if a_limits is not None:
-        inside = (a >= a_limits[0][host]) & (a <= a_limits[1][host])
-        host, a, m, e = host[inside], a[inside], m[inside], e[inside]
-
-    def outside(h, a_):
-        return a_limits is not None and not (a_limits[0][h] <= a_ <= a_limits[1][h])
 
     # Placement, by host in order of decreasing mass.
     keep = np.ones(len(host), dtype=bool)
@@ -451,12 +457,12 @@ def draw_small(mstar, rstar, teff, rows, table_rows, colour, ml, rng, model: Sma
             continue
         n_hill = rows[h, hmc.I_NHILL]
         for j in idx[np.argsort(-m[idx])]:
+            pool = None
             for attempt in range(model.n_redraw + 1):
                 if attempt:
-                    aa, mm = hosts.draw(np.array([h]), rng)
-                    a[j], m[j], e[j] = aa[0], mm[0], _draw_ecc(1, rng, model)[0]
-                    if outside(h, a[j]):
-                        continue
+                    if pool is None:  # all redraws of this candidate in one vectorised draw
+                        pool = (*hosts.draw(np.full(model.n_redraw, h), rng), _draw_ecc(model.n_redraw, rng, model))
+                    a[j], m[j], e[j] = pool[0][attempt - 1], pool[1][attempt - 1], pool[2][attempt - 1]
                 if _fits(a[j], m[j], e[j], occ, mstar[h], n_hill):
                     pos = bisect.bisect_left(occ[0], a[j])
                     for lst, val in zip(occ, (a[j], m[j], e[j], False)):

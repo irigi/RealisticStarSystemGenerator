@@ -2,7 +2,7 @@
 
 Status: phases 1–3 of `DESIGN.md` are done and committed on branch `rewrite-starsys`
 (data layer, validated HM-C port, stellar population validated against the 20-pc
-census). Phase 4 (attaching planets to stars) is in progress: 4.1–4.6 are done, 4.7 is next.
+census). Phase 4 (attaching planets to stars) is done (4.1–4.7); the backlog below holds its follow-ups.
 
 ## Resuming
 
@@ -17,6 +17,7 @@ python -m starsys.validation.giants                                 # giants vs 
 python -m starsys.validation.small                                  # small planets > 300 d vs η⊕, microlensing
 python -m starsys.validation.binaries                               # suppression, boost, hot Jupiters, circumbinary
 python -m starsys.validation.evolved                                # giant stars, white dwarfs, engulfment
+python -m starsys.validation.report                                 # whole-population phase 4 report (writes docs)
 ```
 
 `catalogs/` and `data/` are gitignored. If `data/` is lost, rebuild the SysSim
@@ -143,11 +144,19 @@ component overfilled its Roche lobe are flagged `post_interaction`. 40% of white
 planets (25–50% polluted). Giant stars host giant planets at 13% (Wolthoff+2022: 10.7%).
 `python -m starsys.validation.evolved`; results in §4.6. Follow-up: B23.
 
-### 4.7 Phase 4 validation report
+### 4.7 Phase 4 validation report — done (2026-10-14)
 
-`docs/validation/planets.md`: occurrence vs P and R by stellar type compared with
-Kepler (via the HM-C catalogs), Hsu+2020 and CLS. Include the giant planet
-correlations and a "where it is extrapolating" map.
+`python -m starsys.validation.report [--systems N]` draws the population with all models and
+writes `docs/validation/phase4_report.md`, plus figures in `docs/validation/figures/`:
+- occurrence by host type and in period–radius;
+- Kepler (published HM-C catalogs), DC15/Hsu+2020 and CLS comparisons;
+- giant correlations;
+- the extrapolation map.
+
+`docs/validation/planets.md` opens with a summary table of every phase-4 check and its verdict.
+The whole population reproduces the published HM-C inner occurrence for a Kepler-like sample
+(2.36 vs 2.38 planets per star, all P–R cells within 1σ). 35% of planets carry an
+extrapolation flag. Attaching planets takes ~17–20 s per 100,000 systems.
 
 ## Backlog: inner-system refinements (from 4.1/4.2)
 

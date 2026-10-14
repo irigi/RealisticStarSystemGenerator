@@ -1,7 +1,63 @@
 # Planet validation
 
-Phase 4 report. Each step adds a section; 4.7 adds the occurrence comparison by
-stellar type and the map of where the model extrapolates.
+Phase 4 report: what the planet population is checked against, and how well it does. The
+summary below collects every check. The sections after it give the details step by step
+(4.1–4.6); numbers in a section are from the time of that step unless it says otherwise.
+The generated whole-population report, with occurrence by host type, the Kepler comparison
+and the extrapolation map, is [phase4_report.md](phase4_report.md)
+(`python -m starsys.validation.report`).
+
+## Phase 4 summary (2026-10-14)
+
+All rates are intrinsic (planets per star, no detection model). Verdicts:
+- **match:** within the quoted uncertainty;
+- **consistent:** within ~1.5σ, or inside a range where the data only bound the rate;
+- **tension:** with a backlog item in `docs/NEXT_STEPS.md`.
+
+| Check | Model | Data | Verdict |
+|---|---|---|---|
+| HM-C port vs the 100 published catalogs (distributions, KS) | at the noise floor | He & Ford 2026 | match (§4.1, `hmc_port.md`) |
+| Kepler-like inner planets, whole population with binaries (mock magnitude-limited sample) | 2.36 per star at 3–300 d, every P–R cell within 1.0σ | published HM-C 2.38 ± 0.11 | match (report) |
+| Early M, 1–4 R⊕, P < 200 d | 2.59 (mock Kepler sample) | 2.5 ± 0.2 (DC15) | match (§4.2) |
+| Early M, Hsu+2020 integrated rates | 0.90; 3.78 | 0.9–1.6; 4.2–8.4 | consistent, at the Dirichlet (low) end |
+| Mid-to-late M, 0.5–4 R⊕, 0.5–7 d | 1.06 | 0.61 +0.24/−0.19 (Ment & Charbonneau 2023) | tension, 1.7σ (B4) |
+| Ultracool dwarfs, K2 | within 1σ | Sestovic & Demory 2020 | consistent |
+| CLS fit targets (Fulton+2021, Rosenthal+2022, raw counts, multiplicity) | score 2.6 over 5 | — | match (§4.3) |
+| Giants vs [Fe/H] (Bryan & Lee 2024), Bonomo+2025, Johnson+2010 | 14.0 / 4.7 / 9.5 / 7.5% | 14.3 / 5.0 / 9.8 / 7 ± 1% | match |
+| Same giant model on the population's single Sun-like stars: 2–8 au; % with a giant at 0.23–10 au | 9.7; 18.3% | 14.1 +2.0/−1.8; 17.6 +2.4/−1.9 | expected: the population's [Fe/H] distribution (mean −0.05, SD 0.20) is narrower and lower than CLS's (−0.01, 0.28), which predicts 0.85× the CLS-sample rate; observed 0.83× (report) |
+| Fulton+2021 3.8–7.1 au and 3000–10000 d rates | ~5 | 15.5, 12.6 (exceed their 2–8 au rate) | tension (B10) |
+| HM-C planets ≥ 30 M⊕ inside 300 d | 11 per 100 Sun-like stars | ~1.9 (CLS mass function) | tension (B9) |
+| Direct imaging (Nielsen+2019, Bowler 2016, Vigan+2021) | within ~1σ | — | consistent; GPIES < 6.9% vs 8.7% depends on the assumed shape |
+| Microlensing mass-ratio function (Zang+2025) over the measured range | within ~6% | — | match (§4.4) |
+| Wide orbits, s = 2–6 (Poleski+2021) | 0.05 | 1.4 +0.9/−0.6 | tension (B15) |
+| η⊕, conservative HZ, 0.5–1.5 R⊕ | 0.085 | 0.37–0.60 (Bryson+2021); 0.008–0.076 (Neil & Rogers 2020) | tension with Bryson, match with photoevaporation-aware estimates (B16) |
+| Small planets 237–500 d (Hsu+2019) | 0.053 | 0.03–0.40 | consistent |
+| Suppressed fraction of G primaries (Moe & Kratter 2021) | 21% volume-, 26% magnitude-limited | 33 ± 5%, 43 ± 7% | tension: the population has fewer close companions (B20) (§4.5) |
+| Hot Jupiters, transit-like vs RV-like samples | 0.62% / 0.80% | 0.4–0.6% / ~1% | match (not tuned) |
+| Inner multiplicity with the single-star boost | ≥ 5 planets: 0.49 → 0.68 of M-dwarf hosts | Kepler-fitted HM-C | tension (B21) |
+| Circumbinary planets, 4–6 / 6–10 / > 10 R⊕ (Armstrong+2014) | 14.6 / 7.8 / 3.7% | 14 / 10 / < 5.9% | match (calibrated; B22) |
+| Giant planets around giant stars (Wolthoff+2022) | 13.4% (RGB 13.1, HB 13.8) | 10.7 +2.2/−1.6% (RGB 14.2, HB 6.6) | consistent overall; HB tension (B23) (§4.6) |
+| Giant planets inside 0.5 au around giant stars | 2% (half the main-sequence rate) | almost none (Johnson+2007; Wolthoff+2022) | tension (B23) |
+| White dwarfs with planets | 40% (13% at 1–10 au) | 25–50% metal-polluted (Koester+2014) | consistent |
+| Innermost white-dwarf planets (Mustill & Villaver 2012) | ~3 au (1 M☉ progenitor), ~10 au (4–8 M☉) | ~1.5 and ~10 au | consistent |
+
+**Where the model extrapolates** (generated report, 300,000 systems, 1.6 million planets): 35%
+of planets carry a flag other than `young`.
+- **By flag:**
+  - `multiple` (companion inside 200 au): 15%;
+  - `substellar` (brown-dwarf hosts): 9%;
+  - `cold_extrapolated` (beyond the microlensing-measured range): 8%;
+  - `bridge`: 4%;
+  - `circumbinary`: 3%;
+  - `colour` (hotter than F3): 1.4%;
+  - `evolved`: 1.2%.
+- **Main-sequence M–F stars:** 16–26% of planets inside 1 au are flagged, almost all for
+  companions; 60–85% beyond 1 au, where the small planets are bridged or extrapolated.
+- **Always flagged:** everything around brown dwarfs, A stars, evolved stars, white dwarfs,
+  neutron stars and binary pairs.
+
+Attaching all planet models takes ~17–20 s per 100,000 systems (12 s without the binary and
+evolved-star models; drawing the stars: 1.4 s).
 
 ## 4.1 Planet-attachment glue (`starsys.planets.attach_planets`)
 
@@ -181,7 +237,8 @@ giant hosts outside 0.2–3 M☉ are flagged `giant_host`.
 Fitted parameters: normalisation 0.106 and per-star Gamma dispersion k = 1.0 (jointly,
 five targets below); hot-Jupiter rate; 5.2× more outer giants around hot-Jupiter hosts
 (Knutson+2014: 51 ± 10% have a 1–13 MJ companion at 1–20 au); eccentricity prior
-Beta(0.97, 2.36).
+Beta(0.97, 2.36), refitted in 4.5 to Beta(0.98, 2.13) once single stars carried the
+binary model's boosted inner systems.
 
 ### Stability and the inner system
 
@@ -248,6 +305,9 @@ Tensions:
 
 ### Stellar population (100,000 systems)
 
+Before the binary and evolved-star models (4.5, 4.6); the current numbers by host type are in
+[phase4_report.md](phase4_report.md).
+
 | Host mass (M☉) | Hosts | % with giant | % hot Jupiter | % wide giant | Inner planets per star (without giants) |
 |---|---|---|---|---|---|
 | 0.08–0.3 | 52,307 | 4.2 | 0.07 | 0.20 | 5.09 (5.11) |
@@ -265,7 +325,11 @@ takes ~10 s per 100,000 systems (~6.5 s without).
 ## 4.4 Small planets beyond 300 d (`starsys.outer.small`)
 
 Command: `python -m starsys.validation.small` (200,000 systems from the stellar population,
-all planet models attached; 2026-10-14). Rates are intrinsic, per main-sequence host.
+all planet models attached; 2026-10-14). Rates are intrinsic, per main-sequence host. The
+numbers below predate the binary model (4.5). With it, close binaries lose planets and the
+microlensing anchor carries the single-star boost. Over all main-sequence hosts η⊕ becomes
+0.085 (optimistic 0.151), the Hsu+2019 rate 0.053 and the Neil & Rogers rate 0.010. The
+microlensing comparison is unchanged within 6%, and the wide-orbit rate is 0.048.
 
 ### Model
 
