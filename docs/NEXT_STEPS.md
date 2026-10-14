@@ -8,7 +8,7 @@ census). Phase 4 (attaching planets to stars) is done (4.1–4.7); the backlog b
 
 ```bash
 source .venv/bin/activate
-pytest -q                                  # 39 tests, all should pass
+pytest -q                                  # 41 tests, all should pass
 python -m starsys.validation.census        # stellar population vs 20-pc census
 python -m starsys.validation.hmc --catalogs 6-25 --criterion hill   # HM-C port check
 python -m starsys.validation.planets --catalogs 1-30                # planet glue on Kepler stars
@@ -17,6 +17,7 @@ python -m starsys.validation.giants                                 # giants vs 
 python -m starsys.validation.small                                  # small planets > 300 d vs η⊕, microlensing
 python -m starsys.validation.binaries                               # suppression, boost, hot Jupiters, circumbinary
 python -m starsys.validation.evolved                                # giant stars, white dwarfs, engulfment
+python -m starsys.validation.short                                  # planets inside 3 d vs Hsu+2019, Sanchis-Ojeda+2014
 python -m starsys.validation.report                                 # whole-population phase 4 report (writes docs)
 ```
 
@@ -179,11 +180,25 @@ Inner occurrence, M dwarfs (from 4.2):
 
 Short periods (from 4.2):
 
-- **B7** Planets with P < 3 d around FGK stars (including USPs, Sanchis-Ojeda+2014)
-  are absent: HM-C starts at 3 d. M dwarfs now go down to ~0.75–1.5 d.
+- **B7** ~~Planets with P < 3 d around FGK stars~~ — done (2026-10-15): `starsys.inner.short`
+  (`attach_planets(short=...)`, model "short_period", flag `short_period`). It fills 0.5 d to the
+  host's HM-C limit:
+  - Hsu+2019's grid at 0.5–2 d;
+  - at 2–3 d, the part of Hsu's 2–4 d rate HM-C's 3–4 d planets leave;
+  - Sanchis-Ojeda+2014's stellar-type trend for USPs.
+
+  Matches Hsu within ~10% below 2 d and Sanchis-Ojeda for F, G and K.
+  `python -m starsys.validation.short`; `docs/validation/planets.md`. Not covered: periods
+  below 0.5 d (Kepler-78 b at 8.5 h).
 - **B8** HM-C has no smooth roll-off at short periods. A hard inner limit makes the
   shortest bin too full when the limit is low (the 0.5–1.7 d excess for 2–2.5 R⊕ in
-  DC15). Do together with B7.
+  DC15). For FGK this is solved by B7. For M dwarfs the extension's floor remains: USPs
+  around M dwarfs come out at 1.8% against Sanchis-Ojeda's 1.10 ± 0.40%.
+- **B24** HM-C against Hsu+2019 at 2–8 d (same Kepler sample, different models): at 3–4 d HM-C
+  alone exceeds Hsu's whole 2–4 d bin for 2–6 R⊕ (×1.9 at 2–4 R⊕), and at 4–8 d it has half of
+  Hsu's sub-Earths (0.5–1 R⊕: 0.060 vs 0.124 +0.022/−0.029). HM-C's period scale is a
+  power law per cluster with a hard 3 d edge, with no roll-off. A short-period roll-off in HM-C would need a
+  re-fit (SysSim). Kepler's sub-Earth rates are uncertain by ~30%.
 
 Giant planets (from 4.3):
 
@@ -223,13 +238,20 @@ Small planets beyond 300 d (from 4.4):
   or water-rich planets beyond the snow line would change radii; any change inside 300 d
   needs an HM-C re-fit. Do with phase 5 radii.
 - **B17** Bridge shape: log-linear in ln a, anchored at a_sl, is a choice, not a
-  measurement. The density at a fixed mass dips mid-bridge (the anchors' mass distributions differ). Sample the
-  anchor position (1–2 a_sl) or the interpolation as a model uncertainty, and check against
-  long-baseline RV for Sun-like stars (cold Neptunes at 1–3 au).
+  measurement. The density at a fixed mass dips mid-bridge (the anchors' mass distributions
+  differ). Checked 2026-10-14: the anchor cannot move outward (to 1–2 a_sl, as first planned).
+  For a typical lens (0.5 M☉, R_E = 2.5 au, a_sl = 1.35 au), microlensing's measured
+  s = 0.5–2 is ~0.9–3.7 a_sl in projection, so the microlensing anchor already starts where
+  the data start. The open question is the bridge's shape inside a_sl. Constrain it with
+  long-baseline RV of Sun-like stars (cold Neptunes and super-Earths at 1–3 au, e.g. the HARPS
+  and CLS sensitivity maps) or Gaia DR4 astrometry, then sample the shape as a model uncertainty.
 - **B18** Microlensing hosts are mostly 0.1–1 M☉; FGK/A hosts assume a universal mass ratio
-  and a/a_sl. No metallicity dependence. Zang's parameters are drawn independently (their
-  Dryad MCMC chains would keep correlations). Projected-separation mapping in the check uses
-  a single lens geometry.
+  and a/a_sl. No metallicity dependence. Zang's parameters are drawn independently. Their Dryad
+  record (doi:10.5061/dryad.ksn02v7cg) has no chains, but it has the KMTNet sensitivity
+  functions and the planet sample (Table S3), enough to refit the double Gaussian and sample
+  the joint posterior. Dryad refuses scripted downloads (403, bearer token): download
+  `sensitivity.tar` and `table_S3.xlsx` by hand into `catalogs/observational/zang2025/` (left
+  empty for them). Projected-separation mapping in the check uses a single lens geometry.
 - **B19** Orbits of outer small planets (Rayleigh e σ = 0.05, i σ = 1.4°) continue HM-C's
   multis; nothing measures them. No small planets beyond 10 a_sl.
 
@@ -259,9 +281,11 @@ Binaries and evolved stars (from 4.5/4.6):
 
 Host mapping and age (from 4.1, low priority):
 
-- **B1** Colour scatter is Gaussian, but the Kepler residuals have heavier tails, which
-  leaves a +0.0009 bias in the host fraction. Resample the empirical residuals per
-  Teff bin.
+- **B1** ~~Resample the empirical Kepler colour residuals instead of a Gaussian~~ — closed
+  (2026-10-14): tried; resampling the empirical residuals per 200 K bin gives f_hosts 0.8673
+  against 0.8680 published (−0.0007), the Gaussian +0.0007 (30 catalogs). The bias is at the
+  0.001 level either way and is not set by the tails (residual–star correlations, e.g.
+  metallicity, are in neither). The Gaussian is kept: it needs no Kepler table at run time.
 - **B2** Validate `age="star"` against the observed radius valley vs age (Berger+2020
   Gaia–Kepler ages; David+2021; Fernandes+2023) before considering it as the default.
 - **B3** HM-C has no [Fe/H] dependence. Small close-in planets are mildly more common

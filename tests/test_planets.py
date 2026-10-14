@@ -40,7 +40,7 @@ def test_attach_planets_structure(population):
     inner = np.isin(pl["model"], ["hmc", "hmc_m"]) & ms
     assert np.all((pl["period"][inner] >= 0.5) & (pl["period"][inner] <= 300.0))
     assert set(np.unique(pl["model"])) <= {"hmc", "hmc_m", "giant", "hot_jupiter", "wide_giant", "outer_small",
-                                           "circumbinary", "pulsar"}
+                                           "circumbinary", "pulsar", "short_period"}
     fgk = (pl["model"] == "hmc") & ms
     assert np.all(pl["period"][fgk] >= 3.0)
     assert set(np.unique(pl["hmc_catalog"])) <= set(planets.hmc_posterior()[0])
@@ -73,7 +73,8 @@ def test_flags(population):
     plain = planets.attach_planets(systems, comp, seed=5, mdwarf=None, small=None)
     cool = comp["teff"][plain["component"]] < 3500
     assert ((plain["flags"][cool] & planets.FLAG_COLOUR) > 0).all()
-    assert set(np.unique(plain["model"])) <= {"hmc", "giant", "hot_jupiter", "wide_giant", "circumbinary", "pulsar"}
+    assert set(np.unique(plain["model"])) <= {"hmc", "giant", "hot_jupiter", "wide_giant", "circumbinary", "pulsar",
+                                              "short_period"}
 
 
 def test_mdwarf_extension_leaves_fgk_untouched():

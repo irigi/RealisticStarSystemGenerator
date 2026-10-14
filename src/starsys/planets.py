@@ -15,6 +15,9 @@ merged into one planet table keyed by (system, component):
   M-dwarf calibration (more planets, smaller planets, periods down to 0.5 d) phased
   in below 4000 K, and a disk-mass scaling of occurrence below 0.1 Msun
   (``model`` = "hmc_m").
+- **Planets inside HM-C's inner limit** (:mod:`starsys.inner.short`), 0.5 d to P_min
+  (3 d for FGK stars; ``model`` = "short_period"): Hsu+2019's Kepler occurrence and
+  Sanchis-Ojeda+2014's ultra-short-period trend with stellar type, phased out for M dwarfs.
 - **Giant planets** (:mod:`starsys.outer.giants`), M >= 30 Earth masses: warm and cold
   giants from the California Legacy Survey to 30 au (``model`` = "giant"), hot Jupiters
   ("hot_jupiter") and wide giants from direct imaging to 100 au ("wide_giant"), scaled
@@ -65,10 +68,11 @@ from . import binaries as bn
 from . import evolved as ev
 from .flags import (FLAG_BRIDGE, FLAG_CIRCUMBINARY, FLAG_COLD_EXTRAP, FLAG_COLOUR, FLAG_EVOLVED,  # noqa: F401
                     FLAG_GIANT_HOST, FLAG_MULTIPLE, FLAG_NAMES, FLAG_POST_INTERACTION, FLAG_PULSAR,
-                    FLAG_SUBSTELLAR, FLAG_YOUNG)
+                    FLAG_SHORT_PERIOD, FLAG_SUBSTELLAR, FLAG_YOUNG)
 from .hosts import (HMC_COLOUR_RANGE, P_TYPE, YOUNG_AGE_GYR, build_hosts, flags_of, hmc_hosts,  # noqa: F401
                     host_flags)
 from .inner import hmc
+from .inner import short as sh
 from .inner.mdwarf import MDwarfModel, adjust_params, mdwarf_weight
 from .outer import giants as gp
 from .outer import small as sp
@@ -80,6 +84,7 @@ GIANT_CLUSTER_ID = -1  # ``clusterid`` of giant-model planets
 SMALL_CLUSTER_ID = -2  # ``clusterid`` of small planets beyond HM-C's P_max
 PULSAR_CLUSTER_ID = -3  # ``clusterid`` of pulsar planets
 CB_CLUSTER_ID = -4  # ``clusterid`` of the empirical circumbinary component
+SHORT_CLUSTER_ID = -5  # ``clusterid`` of planets inside HM-C's inner period limit
 CB_SPLIT_RADIUS = 4.0  # circumbinary HM-C planets this large are replaced by the empirical component
 GIANT_REDRAWS = 20  # inner-system redraws for hosts whose inner system is unstable next to its giants
 
@@ -88,6 +93,7 @@ DEFAULT_GIANTS = gp.GiantModel()
 DEFAULT_SMALL = sp.SmallPlanetModel()
 DEFAULT_BINARIES = bn.BinaryModel()
 DEFAULT_EVOLVED = ev.EvolvedModel()
+DEFAULT_SHORT = sh.ShortPeriodModel()
 
 
 @lru_cache(maxsize=1)
@@ -102,7 +108,8 @@ def attach_planets(systems, components, seed=None, *, params: hmc.HMCParams | No
                    mdwarf: MDwarfModel | None = DEFAULT_MDWARF, giants: gp.GiantModel | None = DEFAULT_GIANTS,
                    small: sp.SmallPlanetModel | None = DEFAULT_SMALL,
                    binaries: bn.BinaryModel | None = DEFAULT_BINARIES,
-                   evolved: ev.EvolvedModel | None = DEFAULT_EVOLVED, age: str = "fixed",
+                   evolved: ev.EvolvedModel | None = DEFAULT_EVOLVED,
+                   short: sh.ShortPeriodModel | None = DEFAULT_SHORT, age: str = "fixed",
                    amd_pair_criterion: str = "hill") -> dict[str, np.ndarray]:
     """Draw planets for every component of every system.
 
@@ -129,6 +136,9 @@ def attach_planets(systems, components, seed=None, *, params: hmc.HMCParams | No
     evolved
         Evolved stars and remnants (:class:`starsys.evolved.EvolvedModel`); ``None`` gives
         them no planets.
+    short
+        Planets between 0.5 d and HM-C's inner period limit (:class:`starsys.inner.short.ShortPeriodModel`);
+        ``None`` for none.
     age
         ``"fixed"``: photoevaporation uses HM-C's ``system_age`` (5 Gyr) for every star, as
         published. ``"star"``: use each star's own age (the authors list the fixed age as
@@ -182,6 +192,11 @@ def attach_planets(systems, components, seed=None, *, params: hmc.HMCParams | No
         rows, rest = bn.apply_boost(rows, colour, bn.boost_factor(mass, teff, binaries))
     limits = (h["a_min"], h["a_max"]) if binaries is not None else None
     fixed_plane = np.isfinite(h["plane"][:, 0])
+    if short is not None:
+        short_weight = 1.0 - (mdwarf_weight(teff, mdwarf) if mdwarf is not None else 0.0)
+        short_weight = np.where(h["kind"] == P_TYPE, 0.0, short_weight)
+        if binaries is not None:
+            short_weight = short_weight * bn.boost_factor(mass, None, binaries)
 
     def inner(idx):
         """HM-C systems for hosts ``idx`` (positions in ``host``): (host position per planet, planets, planes)."""
@@ -201,6 +216,8 @@ def attach_planets(systems, components, seed=None, *, params: hmc.HMCParams | No
             sel = fixed_plane[kk]
             nrm = gp.orbit_normals(h["plane"][kk[sel]], p["incl_invariable"][sel], p["asc_node_invariable"][sel])
             p["incl_sky"][sel] = np.arccos(np.clip(nrm[:, 2], -1.0, 1.0))
+        if short is not None:
+            kk, p = _short_period(kk, p, idx, planes, h, rows, short_weight[idx], limits, short, rng)
         if binaries is not None and binaries.circumbinary:
             kk, p = _circumbinary(kk, p, idx, h, rows, binaries, rng)
         return kk, p, planes
@@ -224,6 +241,7 @@ def attach_planets(systems, components, seed=None, *, params: hmc.HMCParams | No
     pl.pop("giant_component", None)
     model = np.where(pl["clusterid"] == SMALL_CLUSTER_ID, "outer_small", model)
     model = np.where(pl["clusterid"] == CB_CLUSTER_ID, "circumbinary", model)
+    model = np.where(pl["clusterid"] == SHORT_CLUSTER_ID, "short_period", model)
     small_flags = pl.pop("small_flags", np.zeros(len(k), dtype=np.int32))
 
     flags = flags_of(h, mdwarf)[k]
@@ -232,6 +250,7 @@ def attach_planets(systems, components, seed=None, *, params: hmc.HMCParams | No
         is_giant = pl["clusterid"] == GIANT_CLUSTER_ID
         flags |= np.where(is_giant & ((mass[k] < lo) | (mass[k] > hi)), FLAG_GIANT_HOST, 0).astype(np.int32)
     flags |= small_flags
+    flags |= np.where(pl["clusterid"] == SHORT_CLUSTER_ID, FLAG_SHORT_PERIOD, 0).astype(np.int32)
     a_au = period_to_a_au(pl["period"], mass[k])
     host_mass = mass[k]
     if evolved is not None and h["evolved"].any():
@@ -255,6 +274,42 @@ def attach_planets(systems, components, seed=None, *, params: hmc.HMCParams | No
     if evolved is not None:
         result = _add_pulsar_planets(result, systems, components, evolved, rng)
     return result
+
+
+def _short_period(kk, p, idx, planes, h, rows, weight, limits, short: sh.ShortPeriodModel, rng):
+    """Add planets between 0.5 d and each host's HM-C P_min for hosts ``idx`` (``planes``:
+    their reference planes, filled in place where missing). Returns the merged, sorted planets."""
+    c = sh.draw_short(h["mass"][idx], h["radius"][idx], h["teff"][idx], rows[idx, hmc.I_PMIN], weight, rng, short)
+    if limits is not None and len(c["host"]):
+        hh = idx[c["host"]]
+        a = period_to_a_au(c["period"], h["mass"][hh])
+        ok = (a >= limits[0][hh]) & (a <= limits[1][hh])
+        c = {key: v[ok] for key, v in c.items()}
+    if not len(c["host"]):
+        return kk, p
+    pos = np.full(len(h["mass"]), -1)
+    pos[idx] = np.arange(len(idx))
+    local = pos[kk]  # positions in idx of the existing planets' hosts
+    keep = sh.place(c, local, p["period"], p["planet_mass"], h["mass"][idx], rows[idx, hmc.I_NHILL])
+    c = {key: v[keep] for key, v in c.items()}
+    n = len(c["host"])
+    if not n:
+        return kk, p
+    missing = np.isnan(planes[:, 0])
+    planes[missing] = gp._random_unit_vectors(missing.sum(), rng)
+    o = gp.orient(c["host"], planes, len(idx), rng, gp.GiantModel(incl_sigma_deg=short.incl_sigma_deg))
+    r = c["planet_radius"]
+    add = {
+        "period": c["period"], "planet_mass": c["planet_mass"], "planet_radius": r,
+        "clusterid": np.full(n, SHORT_CLUSTER_ID, dtype=p["clusterid"].dtype), "ecc": np.zeros(n),
+        "omega": 2 * np.pi * rng.random(n), "incl_mut": o["incl_mut"], "incl_invariable": o["incl_mut"],
+        "asc_node_invariable": o["asc_node"], "incl_sky": o["incl_sky"], "mean_anom": 2 * np.pi * rng.random(n),
+        "mass_init": c["planet_mass"], "radius_init": r, "lost_envelope": r < short.rocky_radius,
+    }
+    kk = np.concatenate([kk, idx[c["host"]]])
+    p = {key: np.concatenate([p[key], add[key]]) for key in p}
+    order = np.lexsort((p["period"], kk))
+    return kk[order], {key: v[order] for key, v in p.items()}
 
 
 def _circumbinary(kk, p, idx, h, rows, binaries: bn.BinaryModel, rng):
@@ -397,7 +452,8 @@ def _add_giants(k, pl, planes, inner, rows, mass, h, giants: gp.GiantModel, rng,
 def _add_small(k, pl, planes, rows, edge, colour, ml, mass, radius, teff, star_age, small: sp.SmallPlanetModel, rng,
                limits=None):
     """Draw small planets beyond P_max around the inner planets and giants; merged and sorted."""
-    inner_pl = np.flatnonzero((pl["clusterid"] >= 0) | (pl["clusterid"] == CB_CLUSTER_ID))
+    inner_pl = np.flatnonzero((pl["clusterid"] >= 0) | (pl["clusterid"] == CB_CLUSTER_ID)
+                               | (pl["clusterid"] == SHORT_CLUSTER_ID))
     last = inner_pl[np.r_[k[inner_pl][1:] != k[inner_pl][:-1], True]] if len(inner_pl) else inner_pl  # outermost
     giant = np.flatnonzero(pl["clusterid"] == GIANT_CLUSTER_ID)
     occ = np.concatenate([last, giant])

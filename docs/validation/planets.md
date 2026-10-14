@@ -32,6 +32,9 @@ All rates are intrinsic (planets per star, no detection model). Verdicts:
 | Wide orbits, s = 2–6 (Poleski+2021) | 0.05 | 1.4 +0.9/−0.6 | tension (B15) |
 | η⊕, conservative HZ, 0.5–1.5 R⊕ | 0.085 | 0.37–0.60 (Bryson+2021); 0.008–0.076 (Neil & Rogers 2020) | tension with Bryson, match with photoevaporation-aware estimates (B16) |
 | Small planets 237–500 d (Hsu+2019) | 0.053 | 0.03–0.40 | consistent |
+| Planets at 0.5–2 d, FGK (Hsu+2019) | within 0.89–1.04 of each bin | — | match (calibrated; B7) |
+| USPs, F / G / K / M (Sanchis-Ojeda+2014) | 0.15 / 0.56 / 1.01 / 1.80% | 0.15 / 0.51 / 0.83 / 1.10% | match for F, G, K; M 1.7σ high (B8) |
+| HM-C at 2–8 d vs Hsu+2019 | 1–4 R⊕ at 2–4 d ×1.2–1.9; sub-Earths at 4–8 d ×0.5 | — | tension (B24) |
 | Suppressed fraction of G primaries (Moe & Kratter 2021) | 21% volume-, 26% magnitude-limited | 33 ± 5%, 43 ± 7% | tension: the population has fewer close companions (B20) (§4.5) |
 | Hot Jupiters, transit-like vs RV-like samples | 0.62% / 0.80% | 0.4–0.6% / ~1% | match (not tuned) |
 | Inner multiplicity with the single-star boost | ≥ 5 planets: 0.49 → 0.68 of M-dwarf hosts | Kepler-fitted HM-C | tension (B21) |
@@ -50,13 +53,14 @@ of planets carry a flag other than `young`.
   - `bridge`: 4%;
   - `circumbinary`: 3%;
   - `colour` (hotter than F3): 1.4%;
-  - `evolved`: 1.2%.
+  - `evolved`: 1.2%;
+  - `short_period`: 0.2%.
 - **Main-sequence M–F stars:** 16–26% of planets inside 1 au are flagged, almost all for
   companions; 60–85% beyond 1 au, where the small planets are bridged or extrapolated.
 - **Always flagged:** everything around brown dwarfs, A stars, evolved stars, white dwarfs,
   neutron stars and binary pairs.
 
-Attaching all planet models takes ~17–20 s per 100,000 systems (12 s without the binary and
+Attaching all planet models takes ~17–21 s per 100,000 systems (12 s without the binary and
 evolved-star models; drawing the stars: 1.4 s).
 
 ## 4.1 Planet-attachment glue (`starsys.planets.attach_planets`)
@@ -587,3 +591,45 @@ MIST's AGB radii are smaller than MV12's models at high mass (2.9 vs > 5 au at 5
 engulfment ratios are applied to MIST, so for massive progenitors the model engulfs less.
 
 Pulsar planets: 2 around 690 neutron stars in 400,000 systems.
+
+## Backlog B7: planets inside 3 d (`starsys.inner.short`)
+
+Command: `python -m starsys.validation.short` (600,000 systems; mock magnitude-limited Kepler
+sample, Teff reweighted to HM-C's Kepler targets; 2026-10-15).
+
+HM-C starts at 3 d, so FGK stars had no planets on the shortest orbits. The new component
+fills 0.5 d to each host's HM-C period limit:
+- **Occurrence and sizes:** Hsu+2019's Kepler/Gaia grid (the HM-C stellar sample), 0.5–1 and
+  1–2 d bins.
+- **2–3 d:** only what HM-C's planets at 3–4 d leave of Hsu's 2–4 d bin.
+- **USPs (P < 1 d):** scaled by Sanchis-Ojeda+2014's stellar-type trend, normalised to the Kepler
+  sample.
+- **Properties:** rocky or Neptunian masses, circular orbits, 7° mutual inclinations; spaced 10
+  mutual Hill radii from the innermost HM-C planet.
+- **M dwarfs:** phased out with the M-dwarf extension, whose period floor (0.75–1.5 d) was
+  fitted to DC15 and Ment+2023.
+- **Flags and boost:** flagged `short_period`; carries the transit-rate single-star boost.
+
+| P (d) | R (R⊕) | Model | Hsu+2019 | Ratio |
+|---|---|---|---|---|
+| 0.5–1 | 0.5–1 / 1–2 / 4–16 | 0.0046 / 0.0041 / 0.0003 | 0.0052 / 0.0044 / 0.0003 | 0.89 / 0.94 / 0.98 |
+| 1–2 | 0.5–1 / 1–2 / 2–4 / 4–16 | 0.0054 / 0.0047 / 0.0005 / 0.0006 | 0.0055 / 0.0048 / 0.0005 / 0.0007 | 0.99 / 0.97 / 1.04 / 0.95 |
+| 2–4 | 0.5–1 / 1–2 / 2–4 / 4–16 | 0.037 / 0.025 / 0.0084 / 0.0038 | 0.039 / 0.020 / 0.0045 / 0.0031 | 0.95 / 1.22 / 1.88 / 1.21 |
+| 4–8 (HM-C only) | 0.5–1 / 1–2 / 2–4 / 4–16 | 0.060 / 0.064 / 0.028 / 0.0035 | 0.124 / 0.064 / 0.025 / 0.0050 | 0.48 / 1.00 / 1.13 / 0.70 |
+
+The remaining 2–4 d excess at 1–4 R⊕ and the 4–8 d deficit of sub-Earths are HM-C's own (its
+3–4 d planets alone exceed Hsu's whole 2–4 d bin for 2–6 R⊕). HM-C is the fitted model there,
+so they are left alone (backlog B24).
+
+USPs (P < 1 d, 0.84–4 R⊕), % of main-sequence stars, against Sanchis-Ojeda+2014:
+
+| Hosts | Model | Observed |
+|---|---|---|
+| F (6100–7100 K) | 0.15 | 0.15 ± 0.05 |
+| G (5100–6100 K) | 0.56 | 0.51 ± 0.07 |
+| K (4100–5100 K) | 1.01 | 0.83 ± 0.18 |
+| M (3100–4100 K) | 1.80 | 1.10 ± 0.40 |
+
+The M-dwarf value comes from the M-dwarf extension's period floor, not from this component. It
+is 1.7σ high, the same short-period excess as B8. Sanchis-Ojeda's planets reach 4.2 h, while
+the model starts at 0.5 d.

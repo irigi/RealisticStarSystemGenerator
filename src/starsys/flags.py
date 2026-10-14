@@ -14,8 +14,9 @@ FLAG_CIRCUMBINARY = 128  # orbits the inner binary (P-type): single-star models 
 FLAG_EVOLVED = 256  # host is a subgiant, giant or white dwarf: main-sequence planets, engulfed and expanded
 FLAG_PULSAR = 512  # neutron-star planet: placeholder rate and properties
 FLAG_POST_INTERACTION = 1024  # a component of the system overfilled its Roche lobe (no binary evolution modelled)
+FLAG_SHORT_PERIOD = 2048  # planet inside HM-C's inner period limit (Hsu+2019 / Sanchis-Ojeda+2014 rates)
 
 FLAG_NAMES = {FLAG_COLOUR: "colour", FLAG_YOUNG: "young", FLAG_MULTIPLE: "multiple", FLAG_SUBSTELLAR: "substellar",
               FLAG_GIANT_HOST: "giant_host", FLAG_BRIDGE: "bridge", FLAG_COLD_EXTRAP: "cold_extrapolated",
               FLAG_CIRCUMBINARY: "circumbinary", FLAG_EVOLVED: "evolved", FLAG_PULSAR: "pulsar",
-              FLAG_POST_INTERACTION: "post_interaction"}
+              FLAG_POST_INTERACTION: "post_interaction", FLAG_SHORT_PERIOD: "short_period"}
