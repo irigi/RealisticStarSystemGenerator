@@ -10,7 +10,8 @@ merged into one planet table keyed by (system, component):
   f_swp was fitted on measured colours, so without that scatter the host fraction of
   Kepler stars comes out 0.003 too high. Model parameters are a random draw from the
   100 ABC posterior catalogs per system (components of a system share the draw),
-  unless a fixed parameter set is given.
+  unless a fixed parameter set is given. Masses of HM-C planets above ~4 Earth radii are
+  rescaled to radial-velocity measurements (:mod:`starsys.inner.rv_masses`, ``rv_masses=``).
 - **M dwarfs and below** (:mod:`starsys.inner.mdwarf`): the same model with the
   M-dwarf calibration (more planets, smaller planets, periods down to 0.5 d) phased
   in below 4000 K, and a disk-mass scaling of occurrence below 0.1 Msun
@@ -80,6 +81,7 @@ from .flags import (FLAG_BRIDGE, FLAG_CIRCUMBINARY, FLAG_COLD_EXTRAP, FLAG_COLOU
 from .hosts import (HMC_COLOUR_RANGE, P_TYPE, S_TYPE, YOUNG_AGE_GYR, build_hosts, flags_of, hmc_hosts,  # noqa: F401
                     host_flags)
 from .inner import hmc
+from .inner import rv_masses as rvm
 from .inner import short as sh
 from .inner.mdwarf import MDwarfModel, adjust_params, mdwarf_weight
 from .outer import giants as gp
@@ -121,7 +123,7 @@ def attach_planets(systems, components, seed=None, *, params: hmc.HMCParams | No
                    evolved: ev.EvolvedModel | None = DEFAULT_EVOLVED,
                    short: sh.ShortPeriodModel | None = DEFAULT_SHORT,
                    derived: dv.DerivedModel | None = DEFAULT_DERIVED, age: str = "fixed",
-                   amd_pair_criterion: str = "hill") -> dict[str, np.ndarray]:
+                   amd_pair_criterion: str = "hill", rv_masses: bool = True) -> dict[str, np.ndarray]:
     """Draw planets for every component of every system.
 
     Parameters
@@ -159,6 +161,9 @@ def attach_planets(systems, components, seed=None, *, params: hmc.HMCParams | No
         a limitation; this is outside what was fitted).
     amd_pair_criterion
         Passed to :func:`starsys.inner.hmc.generate_catalog`.
+    rv_masses
+        Rescale the masses of HM-C planets above ~4 Earth radii to radial-velocity
+        measurements (:mod:`starsys.inner.rv_masses`); ``False`` keeps HM-C's masses.
 
     Returns
     -------
@@ -222,6 +227,10 @@ def attach_planets(systems, components, seed=None, *, params: hmc.HMCParams | No
                                             seed=int(rng.integers(2**31)), amd_pair_criterion=amd_pair_criterion,
                                             return_planes=True)
         kk = idx[p.pop("star_index")]
+        if rv_masses:
+            f = np.where(p["lost_envelope"], 1.0, rvm.correction(p["planet_radius"]))
+            p["planet_mass"] = p["planet_mass"] * f
+            p["mass_init"] = p["mass_init"] * f
         if limits is not None:
             a = period_to_a_au(p["period"], mass[kk])
             ok = (a >= limits[0][kk]) & (a <= limits[1][kk])

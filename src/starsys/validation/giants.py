@@ -295,18 +295,51 @@ def report(stars, cls_pl, model: gp.GiantModel, reps: int):
 
 
 def report_hmc_overlap(model: gp.GiantModel):
-    """Inside 3-300 d, planets below 10 Earth radii come from HM-C; compare its M >= 30 Me planets with CLS."""
+    """Inside 3-300 d, planets below 10 Earth radii come from HM-C; compare its M >= 30 Me planets with CLS.
+
+    Shown with HM-C's own masses and with the masses rescaled to RV (:mod:`starsys.inner.rv_masses`).
+    """
+    from ..inner import rv_masses
     from ..inner.hmc import HMCParams, generate_catalog
 
     n = 50_000
     _, pl = generate_catalog(HMCParams(), np.ones(n), np.ones(n), np.full(n, 5772.0), np.full(n, 0.82), seed=6)
-    big = pl["planet_mass"] >= 30
+    raw = pl["planet_mass"] >= 30
+    m_rv = pl["planet_mass"] * np.where(pl["lost_envelope"], 1.0, rv_masses.correction(pl["planet_radius"]))
+    big = m_rv >= 30
     a_lo, a_hi = gp.period_to_a_au(3.0, 1.0), gp.period_to_a_au(300.0, 1.0)
     cls_rate = model.norm * gp.separation_integral(a_lo, a_hi, model) * gp.mass_integral(30, 106, model)
     print("\nOverlap with HM-C (Sun-like star, P 3-300 d), planets per 100 stars:")
-    _row("HM-C planets with M >= 30 Me (R < 10 Re)", 100 * big.sum() / n, f"CLS model, 30-106 Me: {100 * cls_rate:.2f}")
+    _row("HM-C planets with M >= 30 Me, HM-C masses", 100 * raw.sum() / n, f"CLS model, 30-106 Me: {100 * cls_rate:.2f}")
+    _row("HM-C planets with M >= 30 Me, rescaled to RV", 100 * big.sum() / n, f"CLS model, 30-106 Me: {100 * cls_rate:.2f}")
     print(f"    their HM-C radii: median {np.median(pl['planet_radius'][big]):.1f} Re, "
           f"quartiles {np.round(np.quantile(pl['planet_radius'][big], [0.25, 0.75]), 1).tolist()}")
+
+
+def report_howard(n_systems: int = 200_000):
+    """RV occurrence at P < 50 d by M sin i around GK dwarfs (0.54-1.28 Msun, no stellar companion):
+    Howard+2010 (Eta-Earth survey, 166 stars), fit df/dlog10 M = 0.39 M^-0.48 (k +0.27/-0.16,
+    exponent +0.12/-0.14), with HM-C's own masses and with the masses rescaled to RV."""
+    from .. import binaries as bn
+    from ..planets import attach_planets, hmc_hosts
+    from ..stars.population import draw_systems
+
+    systems, comp = draw_systems(n_systems, seed=9)
+    mass = np.asarray(comp["mass"])
+    gk = (hmc_hosts(comp) & (np.asarray(comp["phase"]) == 0) & (mass >= 0.54) & (mass <= 1.28)
+          & np.isnan(bn.structure(comp)["a_near"]))
+    fit = lambda lo, hi: 39.0 / (0.48 * np.log(10.0)) * (lo**-0.48 - hi**-0.48)  # noqa: E731
+    runs = {rv: attach_planets(systems, comp, seed=10, rv_masses=rv, derived=None) for rv in (False, True)}
+    print(f"\nRV occurrence at P < 50 d around {gk.sum()} GK dwarfs, % of stars (Howard+2010 fit):")
+    for lo, hi in ((3, 10), (10, 30), (30, 100), (100, 1000)):
+        vals = []
+        for rv in (False, True):
+            pl = runs[rv]
+            c = pl["component"]
+            sel = ((pl["host_kind"] == "S") & gk[c] & (pl["period"] < 50)
+                   & (pl["planet_mass"] * np.sin(pl["incl_sky"]) >= lo) & (pl["planet_mass"] * np.sin(pl["incl_sky"]) < hi))
+            vals.append(100 * (np.bincount(c[sel], minlength=len(mass)) > 0)[gk].mean())
+        _row(f"M sin i {lo}-{hi} Me: HM-C masses {vals[0]:.2f}, rescaled", vals[1], f"{fit(lo, hi):.1f} (fit)")
 
 
 def report_population(n_systems: int = 100_000):
@@ -349,6 +382,7 @@ def main() -> None:
         print("Calibrated:", {k: getattr(model, k) for k in ("norm", "dispersion", "hj_rate", "hj_outer_boost")}, "\n")
     report(stars, cls_pl, model, args.reps)
     report_hmc_overlap(model)
+    report_howard()
     report_population()
 
 

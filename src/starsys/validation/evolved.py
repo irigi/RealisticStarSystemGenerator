@@ -12,7 +12,13 @@ Model planets come from the stellar population through :func:`starsys.planets.at
   model counts planets at 89-4400 d. Their RGB stars average 1.3 Msun, their HB stars 2.1 Msun
   (1-3.5 Msun), so the subsets differ mostly by mass; their mass-metallicity fit
   (f = 0.128 exp(-(M - 1.68)^2 / (2 0.70^2)) 10^(1.38 [Fe/H])) gives 11% and 7.4% for the two
-  subsets. The model is shown by mass, next to that fit averaged over the model stars.
+  subsets. The model is shown by mass, next to that fit averaged over the model stars, and
+  reweighted to a Wolthoff-like sample: 171 RGB stars of 1.0-1.6 Msun and 311 HB stars spread
+  evenly over 1-3 Msun (their HB masses are near-uniform over 1-3.5 Msun), both with their
+  sample's [Fe/H] distribution (mean -0.05, sd 0.18; the model's RGB stars are older and
+  0.05 dex poorer), with the expected
+  number of planets they would have found at P < 89 d (they found none; completeness is
+  highest there).
 - **Close-in giants around giants:** RV surveys find almost no giant planets with P < 90 d
   around giant stars (Johnson+2007; Sato+2008; Wolthoff+2022: one at 89 d among 37 planets),
   partly from engulfment and tidal decay (Villaver & Livio 2009). Fraction with a giant
@@ -95,6 +101,48 @@ def wolthoff(comp, pl) -> pd.DataFrame:
     return out
 
 
+def wolthoff_sample(comp, pl) -> pd.DataFrame:
+    """Model rates reweighted to Wolthoff+2022's sample (171 RGB stars of ~1.3 Msun, 311 HB stars of 1-3 Msun)."""
+    g = _groups(comp)
+    mass = np.asarray(comp["mass"])
+    msini = pl["planet_mass"] * np.sin(pl["incl_sky"])
+    big = (pl["host_kind"] == "S") & (msini >= 0.8 * MJUP_E)
+    n = len(mass)
+    has_win = np.bincount(pl["component"][big & (pl["period"] > 89.0) & (pl["period"] < 4400.0)], minlength=n) > 0
+    has_in = np.bincount(pl["component"][big & (pl["period"] <= 89.0)], minlength=n) > 0
+    rgb = np.flatnonzero(g["RGB (2, log g < 3.5)"] & (mass >= 1.0) & (mass < 1.6))
+    hb = np.flatnonzero(g["core-He burning (3)"] & (mass >= 1.0) & (mass < 3.0))
+    # HB stars weighted to a uniform mass distribution over 1-3 Msun.
+    edges = np.linspace(1.0, 3.0, 9)
+    k = np.clip(np.digitize(mass[hb], edges) - 1, 0, len(edges) - 2)
+    w_hb = 1.0 / np.bincount(k, minlength=len(edges) - 1)[k]
+    feh = np.asarray(comp["feh"])
+
+    def feh_weight(idx, w):  # reweight to the sample's [Fe/H] distribution, N(-0.05, 0.18)
+        f_edges = np.arange(-1.0, 0.61, 0.1)
+        j = np.clip(np.digitize(feh[idx], f_edges) - 1, 0, len(f_edges) - 2)
+        have = np.bincount(j, weights=w, minlength=len(f_edges) - 1)
+        mid = 0.5 * (f_edges[1:] + f_edges[:-1])
+        want = np.exp(-0.5 * ((mid + 0.05) / 0.18) ** 2)
+        return w * np.where(have[j] > 0, want[j] / np.maximum(have[j], 1e-300), 0.0)
+
+    rows = []
+    for name, idx, w, n_obs, obs in (("RGB", rgb, feh_weight(rgb, np.ones(len(rgb))), 171, "14.2 +4.1 -2.7"),
+                                     ("HB", hb, feh_weight(hb, w_hb), 311, "6.6 +2.0 -1.3")):
+        rows.append({"stage": name, "model stars": len(idx), "Wolthoff stars": n_obs,
+                     "model % (89-4400 d)": 100 * np.average(has_win[idx], weights=w), "Wolthoff %": obs,
+                     "expected hosts at P <= 89 d": n_obs * np.average(has_in[idx], weights=w)})
+    tot = {"stage": "all", "model stars": len(rgb) + len(hb), "Wolthoff stars": 482,
+           "model % (89-4400 d)": (171 * rows[0]["model % (89-4400 d)"] + 311 * rows[1]["model % (89-4400 d)"]) / 482,
+           "Wolthoff %": "10.7 +2.2 -1.6",
+           "expected hosts at P <= 89 d": rows[0]["expected hosts at P <= 89 d"] + rows[1]["expected hosts at P <= 89 d"]}
+    rows.append(tot)
+    out = pd.DataFrame(rows).set_index("stage")
+    out.attrs["obs"] = (f"Wolthoff+2022 found no host at P <= 89 d; Poisson probability of none given the model: "
+                        f"{np.exp(-tot['expected hosts at P <= 89 d']):.2f}")
+    return out
+
+
 def close_in(comp, pl) -> pd.DataFrame:
     g = _groups(comp)
     giants = g["RGB (2, log g < 3.5)"] | g["core-He burning (3)"] | g["AGB (4-5)"]
@@ -164,6 +212,9 @@ def main(argv=None):
     w = wolthoff(comp, pl)
     print(f"\n== Giant stars with a planet of M sin i >= 0.8 MJup at P > 89 d ==\n{w.attrs['obs']}")
     print(w)
+    ws = wolthoff_sample(comp, pl)
+    print(f"\n== Reweighted to Wolthoff+2022's sample ==\n{ws.attrs['obs']}")
+    print(ws)
     print("\n== Giant planets inside 0.5 au: giant stars vs main-sequence stars ==")
     print(close_in(comp, pl))
     print("\n== White dwarfs ==")

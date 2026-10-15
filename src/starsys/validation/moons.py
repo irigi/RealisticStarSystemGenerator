@@ -9,6 +9,13 @@
   Jupiter size gives an occurrence of Galilean-analogue moon systems eta < 0.38 (95%),
   0.16 +0.13/-0.10. Model: fraction of planets of 1-11 Earth radii at 0.1-1 au around FGK
   main-sequence stars with a moon of >= 0.2 Earth radii (Galilean moons are 0.29-0.41).
+  Their sample is mostly sub-Neptunes: warm Kepler DR25 candidates (P < 397 d, 0.1-1 au, FGK)
+  have a median radius of 2.5 Earth radii and only 8% are above 6. The like-for-like model
+  value weights the model's eta per radius bin by those candidates' radii, for the whole
+  sample and for its smaller and larger halves (Teachey's Table 1 splits the 284 planets at
+  their median radius: eta in [0.06, 0.35] and [0.07, 0.44] at 1 sigma, < 0.48 and < 0.61 at
+  95%). Their target selection favours planets that can hold large moons, so the larger
+  half is the more representative comparison.
 - **Survival vs orbit:** fraction of giant planets with moons and of rocky planets with an
   impact moon by semi-major axis and host type (Barnes & O'Brien 2002: close-in planets lose them).
 - **Large moons in habitable zones:** moons of >= 0.1 Earth masses (able to hold an atmosphere
@@ -27,7 +34,11 @@ import pandas as pd
 from .. import derived as dv
 from .. import moons
 from .. import planets
+from ..paths import CATALOGS_DIR
 from ..stars.population import draw_systems
+
+KOI = CATALOGS_DIR / "observational" / "kepler_dr25_koi.csv"
+TEACHEY_EDGES = np.array([1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 5.0, 6.0, 8.0, 11.0, 30.0])
 
 SOLAR = [  # name, a (au), e, mass (Earth), radius (Earth), envelope lost, observed
     ("Mercury", 0.387, 0.206, 0.055, 0.383, True, "none"),
@@ -90,6 +101,21 @@ def teachey(comp, pl, m) -> pd.DataFrame:
         big[m["planet"][m["radius"] >= 0.2]] = True
         rows.append({"planets": label, "n": int(sel.sum()), "model eta": big[sel].mean(),
                      "Teachey+2018": "< 0.38 (95%), 0.16 +0.13 -0.10"})
+    if KOI.exists():
+        r = pl["planet_radius"]
+        e = TEACHEY_EDGES
+        eta = np.array([big[warm & (r >= lo) & (r < hi)].mean() for lo, hi in zip(e[:-1], e[1:])])
+        k = pd.read_csv(KOI, usecols=["koi_pdisposition", "koi_period", "koi_sma", "koi_steff", "koi_prad"])
+        k = k[(k.koi_pdisposition == "CANDIDATE") & (k.koi_period < 397.4) & (k.koi_sma >= 0.1) & (k.koi_sma < 1.0)
+              & (k.koi_steff >= 3900) & (k.koi_steff < 7200)]
+        rk = k.koi_prad.dropna().to_numpy()
+        rk = rk[(rk >= e[0]) & (rk < e[-1])]
+        w = eta[np.clip(np.digitize(rk, e) - 1, 0, len(eta) - 1)]
+        med = np.median(rk)
+        for label, sel, obs in (("Kepler-weighted, all", rk > 0, "< 0.38 (95%), 0.16 +0.13 -0.10"),
+                                (f"Kepler-weighted, < {med:.1f} Re", rk < med, "< 0.48 (95%), [0.06, 0.35]"),
+                                (f"Kepler-weighted, >= {med:.1f} Re", rk >= med, "< 0.61 (95%), [0.07, 0.44]")):
+            rows.append({"planets": label, "n": int(sel.sum()), "model eta": w[sel].mean(), "Teachey+2018": obs})
     return pd.DataFrame(rows).set_index("planets")
 
 

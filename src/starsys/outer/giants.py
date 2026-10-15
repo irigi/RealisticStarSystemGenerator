@@ -9,6 +9,16 @@ Three components, drawn per host star:
 - s(a) = a^beta * (1 - exp(-(a / a0)^gamma)): broken power law of Fulton+2021 (California
   Legacy Survey, CLS), Table 1: beta = -0.86, a0 = 3.6 au, gamma = 1.59, fitted to
   0.03-30 au, and used up to 30 au (wider orbits: third component).
+- Intermediate-mass hosts: giants of evolved stars of 1-3 Msun peak at P ~ 720-800 d (Wolthoff+2022:
+  log-normal in P with mode 793 d and sigma_lnP = 0.89; occurrence rises x5 from P < 300 d to
+  300-1000 d), and subgiant hosts of 1.5-2 Msun ("retired A stars") have no giants inside
+  0.6 au although their radii are small (Bowler+2010; Johnson+2010). Their periods differ
+  from main-sequence Sun-like stars mainly above 1.4 Msun (Wolthoff+2022, KS test). A share
+  w(M*) of the cold giants follows that log-normal in P instead of s(a), with w rising
+  linearly from 0 at ``im_mass_range[0]`` = 1.1 Msun to 1 at 1.6 Msun (a choice spanning the
+  1.4 Msun split). The number of giants per star is unchanged, only their orbits move; this
+  brings the RV-detectable rate of 1.4-2 Msun stars to Johnson+2010's fit (see
+  :mod:`starsys.validation.evolved`).
 - q(M): flat in ln M from 30 to 900 Earth masses (Fulton+2021 Fig. 6), then
   (M / 900)^``mass_slope_high`` up to 6000 Earth masses. The slope -1 reproduces the CLS
   1-5 au counts above 300 Earth masses (CLS is near complete there): see
@@ -100,6 +110,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 
 import numpy as np
+from scipy.special import ndtr, ndtri
 
 from ..inner.hmc import relative_amd_collision, relative_amd_hill
 from ..units import EARTH_MASS_MSUN, a_au_to_period, period_to_a_au
@@ -151,6 +162,10 @@ class GiantModel:
     # Orbits.
     ecc_beta: tuple = (0.983, 2.126)  # prior; conditioned on the inner system it matches CLS
     incl_sigma_deg: float = 11.8
+    # Intermediate-mass hosts (Wolthoff+2022 log-normal period distribution).
+    im_mass_range: tuple = (1.1, 1.6)  # share of cold giants on the log-normal: 0 below, 1 above
+    im_p_mode: float = 793.0  # d, mode per ln P
+    im_p_sigma: float = 0.89
 
 
 # Hot-Jupiter rate relative to G dwarfs vs stellar mass: TESS A 0.29, F 0.36, G 0.55 %
@@ -233,6 +248,32 @@ def draw_separation(a_lo, a_hi, rng, model: GiantModel = GiantModel()) -> np.nda
     c_hi = np.interp(np.log(a_hi), _LNA, cdf)
     u = c_lo + rng.random(len(c_lo)) * (c_hi - c_lo)
     return np.exp(np.interp(u, cdf, _LNA))
+
+
+def im_weight(mass, model: GiantModel = GiantModel()) -> np.ndarray:
+    """Share of cold giants on the intermediate-mass (Wolthoff+2022) period distribution."""
+    lo, hi = model.im_mass_range
+    return np.clip((np.asarray(mass, dtype=float) - lo) / (hi - lo), 0.0, 1.0)
+
+
+def draw_cold_separation(mstar, rng, model: GiantModel = GiantModel()) -> np.ndarray:
+    """Semi-major axes (au) of cold giants around stars of mass ``mstar``, between P = p_min_cold and a_max.
+
+    A share :func:`im_weight` follows the log-normal in P of intermediate-mass hosts, the rest s(a).
+    """
+    mstar = np.asarray(mstar, dtype=float)
+    a_lo = period_to_a_au(model.p_min_cold, mstar)
+    a = draw_separation(a_lo, np.full(len(mstar), model.a_max), rng, model)
+    w = im_weight(mstar, model)
+    im = np.flatnonzero(w > 0)
+    if len(im):
+        im = im[rng.random(len(im)) < w[im]]
+        mu = math.log(model.im_p_mode)
+        z_lo = (math.log(model.p_min_cold) - mu) / model.im_p_sigma
+        z_hi = (np.log(a_au_to_period(model.a_max, mstar[im])) - mu) / model.im_p_sigma
+        u = ndtr(z_lo) + rng.random(len(im)) * (ndtr(z_hi) - ndtr(z_lo))
+        a[im] = period_to_a_au(np.exp(mu + model.im_p_sigma * ndtri(u)), mstar[im])
+    return a
 
 
 def _draw_power(n, index, lo, hi, rng):
@@ -354,10 +395,7 @@ def _draw_orbit(component, mstar, rng, model: GiantModel):
                 return float(period_to_a_au(p, mstar)), 0.0
     e = min(float(rng.beta(*model.ecc_beta)), 0.95)
     if component == COLD:
-        cdf = _separation_cdf(model)
-        c_lo = np.interp(math.log(period_to_a_au(model.p_min_cold, mstar)), _LNA, cdf)
-        c_hi = np.interp(math.log(model.a_max), _LNA, cdf)
-        return math.exp(np.interp(c_lo + rng.random() * (c_hi - c_lo), cdf, _LNA)), e
+        return float(draw_cold_separation(np.array([mstar]), rng, model)[0]), e
     return float(_draw_power(1, model.wide_a_index, *model.wide_a_range, rng)[0]), e
 
 
@@ -419,8 +457,7 @@ def draw_giants(mass, feh, luminosity, rng, model: GiantModel = GiantModel(), pl
             continue
         e[s] = np.minimum(rng.beta(*model.ecc_beta, len(s)), 0.95)
         if comp == COLD:
-            a[s] = draw_separation(period_to_a_au(model.p_min_cold, mass[host[s]]), np.full(len(s), model.a_max),
-                                   rng, model)
+            a[s] = draw_cold_separation(mass[host[s]], rng, model)
         else:
             a[s] = _draw_power(len(s), model.wide_a_index, *model.wide_a_range, rng)
     r = giant_radius(m, SOLAR_FLUX_CGS * lum[host] / a**2, rng)

@@ -139,16 +139,30 @@ def kozai_census(comp, pl, n_without) -> pd.DataFrame:
 
 
 def ecc_in_binaries(comp, pl) -> pd.DataFrame:
-    """Giant eccentricities with and without a stellar companion: model vs NASA archive."""
+    """Giant eccentricities with and without a stellar companion: model vs NASA archive.
+
+    The archive difference is tested with Kolmogorov-Smirnov and Mann-Whitney U tests
+    against the single-star sample (p-values on the companion rows).
+    """
+    from scipy import stats
+
     t = pd.read_csv(ARCHIVE, comment="#", usecols=["pl_name", "pl_bmasse", "pl_orbsmax", "pl_orbeccen", "sy_snum",
                                                      "discoverymethod", "st_mass"])
     t = t[(t["discoverymethod"] == "Radial Velocity") & (t["pl_bmasse"] >= 95) & (t["pl_orbsmax"] >= 0.1)
           & (t["pl_orbsmax"] < 5) & np.isfinite(t["pl_orbeccen"]) & (t["st_mass"] > 0.7) & (t["st_mass"] < 1.4)]
     rows = []
-    for label, m in (("single", t["sy_snum"] == 1), ("with stellar companion", t["sy_snum"] > 1)):
-        e = t["pl_orbeccen"][m]
-        rows.append({"sample": f"NASA archive RV, {label}", "planets": int(m.sum()), "mean e": e.mean(),
-                     "e > 0.6 (%)": 100 * np.mean(e > 0.6)})
+
+    def row(label, e, ref=None):
+        r = {"sample": label, "planets": len(e), "mean e": e.mean(), "e > 0.6 (%)": 100 * np.mean(e > 0.6),
+             "p (KS)": np.nan, "p (Mann-Whitney)": np.nan}
+        if ref is not None and len(e) and len(ref):
+            r["p (KS)"] = stats.ks_2samp(e, ref).pvalue
+            r["p (Mann-Whitney)"] = stats.mannwhitneyu(e, ref).pvalue
+        rows.append(r)
+
+    single = t["pl_orbeccen"][t["sy_snum"] == 1].to_numpy()
+    row("NASA archive RV, single", single)
+    row("NASA archive RV, with stellar companion", t["pl_orbeccen"][t["sy_snum"] > 1].to_numpy(), single)
     from .. import binaries as bn
 
     st = bn.structure(comp)
@@ -158,11 +172,10 @@ def ecc_in_binaries(comp, pl) -> pd.DataFrame:
     base = ((pl["host_kind"] == "S") & (msini >= 95) & (pl["a_au"] >= 0.1) & (pl["a_au"] < 5)
             & (mass[c] > 0.7) & (mass[c] < 1.4) & (np.asarray(comp["phase"])[c] == 0))
     a_near = st["a_near"][c]
-    for label, m in (("no stellar companion", np.isnan(a_near)),
-                     ("stellar companion < 2000 au", a_near < 2000)):
-        e = pl["ecc"][base & m]
-        rows.append({"sample": f"model, {label}", "planets": int((base & m).sum()), "mean e": e.mean(),
-                     "e > 0.6 (%)": 100 * np.mean(e > 0.6)})
+    alone = pl["ecc"][base & np.isnan(a_near)]
+    row("model, no stellar companion", alone)
+    for label, m in (("stellar companion < 2000 au", a_near < 2000), ("stellar companion < 200 au", a_near < 200)):
+        row(f"model, {label}", pl["ecc"][base & m], alone)
     return pd.DataFrame(rows).set_index("sample")
 
 

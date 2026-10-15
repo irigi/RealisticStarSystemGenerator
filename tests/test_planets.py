@@ -182,6 +182,41 @@ def test_giant_samplers_match_their_densities():
     assert ((a >= 1) & (a < 5)).mean() == pytest.approx(frac, abs=0.005)
 
 
+def test_intermediate_mass_hosts_have_giants_near_800_days():
+    from starsys.outer import giants as gp
+    from starsys.units import a_au_to_period
+
+    rng = np.random.default_rng(1)
+    model = gp.GiantModel()
+    assert gp.im_weight(np.array([1.0, 1.35, 2.0]), model).tolist() == pytest.approx([0.0, 0.5, 1.0])
+    a1 = gp.draw_cold_separation(np.full(100_000, 1.0), rng, model)
+    a2 = gp.draw_cold_separation(np.full(100_000, 2.0), rng, model)
+    p2 = a_au_to_period(a2, 2.0)
+    # Wolthoff+2022: log-normal in P, mode 793 d, sigma 0.89 (the Fulton s(a) peaks at ~3.7 au)
+    assert np.median(np.log(p2)) == pytest.approx(np.log(793.0), abs=0.02)
+    assert np.std(np.log(p2)) == pytest.approx(0.89, abs=0.02)
+    assert np.mean(p2 < 90) < 0.01 < np.mean(a_au_to_period(a1, 1.0) < 90)
+    assert (a2 <= model.a_max).all() and (p2 >= model.p_min_cold).all()
+
+
+def test_rv_mass_rescaling():
+    from starsys.inner import rv_masses
+
+    c = rv_masses.correction(np.array([2.0, 3.5, 5.0, 7.0, 9.5, 10.0]))
+    assert c[:2].tolist() == [1.0, 1.0] and (c <= 1.0).all() and (c[2:] < 0.7).all()
+    assert rv_masses.target_mass(5.0) == pytest.approx(1.74 * 5.0**1.58)  # Otegi+2020
+    assert rv_masses.target_mass(9.45) == pytest.approx(95.2, rel=1e-6)  # Saturn
+    systems, comp = _sun_like(3000)
+    kw = dict(seed=3, params=HMCParams(), giants=None, small=None, derived=None)
+    a = planets.attach_planets(systems, comp, rv_masses=False, **kw)
+    b = planets.attach_planets(systems, comp, **kw)
+    assert np.array_equal(a["planet_radius"], b["planet_radius"])
+    big = (a["planet_radius"] > 5) & ~a["lost_envelope"] & (a["model"] == "hmc")
+    assert big.any() and (b["planet_mass"][big] < 0.7 * a["planet_mass"][big]).all()
+    small = a["planet_radius"] < 3.5
+    assert np.array_equal(a["planet_mass"][small], b["planet_mass"][small])
+
+
 def test_small_planets_beyond_pmax():
     from starsys.outer.giants import pair_stable
     from starsys.outer.small import _hill_ok
