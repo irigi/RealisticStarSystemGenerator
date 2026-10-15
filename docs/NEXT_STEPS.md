@@ -2,7 +2,7 @@
 
 Status: phases 1–6 of `DESIGN.md` are built and validated (stars, planets of every
 population, derived properties, moons, systems around real stars). Phases 1–4 are merged into
-`main`; phase 5 and the backlog session are on branch `phase5`, phase 6 on `phase6` (branched
+`main`; phase 5 and the backlog session are on branch `phase5`, phase 6 and step 4 on `phase6` (branched
 from `phase5`). How each part was built and checked: `DESIGN.md` §3, `docs/validation/`
 (`planets.md` for phase 4, `phase5.md` for phase 5, `phase6.md` for phase 6).
 
@@ -19,7 +19,49 @@ not kept as open tasks.
 3. **Phase 6, real-star conditioning** — done (2026-10-15; `DESIGN.md` §3.5,
    `docs/validation/phase6.md`): systems around named stars, conditioned on their known
    planets and on survey sensitivity.
-4. **Usability:** readable per-system summaries and export formats, including A9.
+4. **Usability: summaries and exports** — done (2026-10-15; `DESIGN.md` §3.6): `python -m
+   starsys` and `starsys.generate.generate`, readable per-system summaries
+   (`starsys.describe`), JSON and CSV/Parquet exports (`starsys.export`), A9.
+5. **Viewer** (next): interactive exploration of a generated system, see below.
+
+## Step 5: system viewer (plan)
+
+Goal: explore one system visually, in the spirit of Pioneer Space Simulator's system map:
+true orbital separations with planets on their own size scale, and a hierarchical map in which
+clicking a body opens its information.
+
+**Form.** One self-contained HTML file (vanilla JS + SVG/canvas, no server, no build step,
+works offline): `python -m starsys.view` (and `python -m starsys.real NAME --view`) writes the
+chosen systems' JSON (`starsys.system/1`, §3.6) into the page and opens it in the browser. The
+page also opens any exported JSON by drag-and-drop. Nothing in the generator changes; the
+viewer reads only the export, so the JSON schema is its contract.
+
+**Views.**
+1. *Orbit view* (true separations): top-down orbits as ellipses from a, e and ω around each
+   host; habitable zone shaded (optimistic and conservative); zoom and pan from the innermost
+   planet out to the stellar companions, with a linear/log distance toggle (log needed:
+   systems span 0.01–10⁴ au). Planets are discs on a separate size scale (radii relative to
+   each other kept, e.g. a common power-law of the radius), positions from the mean anomaly,
+   with an optional time slider.
+2. *System map* (hierarchy, Pioneer-like): barycentre → stars (pairs as binary nodes, the
+   chain hierarchy of the generator) → planets in order of distance → moons, as a horizontal
+   tree; bodies drawn at relative size and coloured by type and temperature (rocky by climate,
+   banded giants, blue ice giants, white dwarfs and brown dwarfs distinct); circumbinary
+   planets under their pair.
+3. *Information panel* on click: every exported field with units and plain-language labels
+   (class, T_eq marked "no greenhouse", illustrative surface temperature, habitable zone, spin,
+   moons, flags explained, known planets marked).
+4. *System list* when the file holds several systems (or realisations of a real star): filter
+   by spectral type, planets, habitable-zone rocky planets.
+
+**Steps.** (a) static map and orbit view from one JSON system; (b) interaction: zoom, click,
+panel; (c) system list and real-star realisations; (d) time slider, styling, size and colour
+legend. Checked by rendering sample systems (single G star, M-dwarf multi, circumbinary,
+white dwarf, a real star such as TRAPPIST-1) and screenshots.
+
+**Open choices for the user:** standalone HTML page (recommended: no new dependencies) vs a
+desktop window (PyQt) or a notebook widget; how far to go with artwork (flat colours vs
+procedural planet textures).
 
 Phase 7 (learned emulators): not needed so far. Conditioning takes 5–35 s per star, almost all
 of it in drawing prior systems; the importance sampling itself reaches ESS 200 even for
@@ -58,7 +100,8 @@ Validation and known limits: `docs/validation/phase6.md`; assumptions: `docs/ASS
 
 ```bash
 source .venv/bin/activate
-pytest -q                                  # all tests should pass (81)
+pytest -q                                  # all tests should pass (88)
+python -m starsys -n 5 --seed 1             # five random systems, printed
 python -m starsys.validation.census        # stellar population vs 20-pc census
 python -m starsys.validation.hmc --catalogs 6-25 --criterion hill   # HM-C port check
 python -m starsys.validation.planets --catalogs 1-30                # planet glue on Kepler stars
@@ -107,6 +150,9 @@ Done in step 2 (2026-10-15; details in `docs/ASSUMPTIONS.md` and the validation 
   25.5 → 17.4.
 - **A7 (B15, B22) Settings** — `SmallPlanetModel(wide_factor=1)`, `BinaryModel(cb_rate_factor=1)`.
 - **A8 (B30) Moons slow their planet's spin** — `moons.attach_moons` updates `rotation_h`.
+- **A9 Temperature presentation** (step 4) — `t_eq` labelled as the no-greenhouse equilibrium
+  temperature everywhere; illustrative surface temperature and climate of rocky planets
+  (`describe.surface_temperature`, `docs/ASSUMPTIONS.md`).
 
 Open:
 
@@ -115,9 +161,10 @@ Open:
 - **A6 (B28, B29, optional) Worldbuilding extras.** Small irregular moons (size
   distribution, Jewitt & Haghighipour 2007) and water lost during the runaway phase
   (Luger & Barnes 2015 escape rates).
-- **A9 Temperature presentation** (step 4). `t_eq` is the no-greenhouse equilibrium
-  temperature (Earth 255 K, real surface 288 K). Label it as such in summaries and add a rough
-  surface-temperature estimate for rocky planets, marked as illustrative.
+- **A10 Known planets of other components** (found in step 4). Conditioning uses the known
+  planets of the looked-up star only: Alpha Centauri (target α Cen A) is conditioned on 0
+  planets, although Proxima Centauri's are known. Look up and match the NASA planets of every
+  component (`real.known`, `real.condition`).
 
 ### B. Assumed (documented in `docs/ASSUMPTIONS.md`)
 

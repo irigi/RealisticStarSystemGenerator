@@ -206,6 +206,29 @@ dwarf sequence with a Kepler-calibrated offset and scatter; validated on Kepler 
    view trick and the tempering keep systems with up to 8 known planets at ESS 200 from
    80,000 prior draws.
 
+### 3.6 Output (step 4 of the plan; `starsys.generate`, `starsys.describe`, `starsys.export`)
+
+`python -m starsys -n N [--seed S] [--spectral G] [--habitable] [--json F] [--tables D]` or
+`starsys.generate.generate(N)`, which runs stars, planets (with derived properties) and moons
+and returns a `Systems` bundle of the four tables; conditioned systems convert with
+`Systems.from_conditioned` (`python -m starsys.real NAME --show K --json F`).
+
+- **Summaries** (`describe.system_text`): one block per star (spectral type, mass, radius,
+  Teff, L, its orbit, habitable-zone distances), a planet table (name, class, orbit, mass,
+  radius, insolation, T_eq, illustrative surface temperature, notes) and the moons.
+- **Labels:** names (A, B ...; planets b, c ... by period; circumbinary "AB b"; moons I, II ...),
+  planet class ("temperate Earth-size", "hot Jupiter"), climate and the illustrative surface
+  temperature of rocky planets (A9, `describe.surface_temperature`).
+- **Exports** (`export`): nested JSON per system (schema `starsys.system/1`, units included;
+  the input format of the planned viewer, §3.7), and flat CSV/Parquet tables with the labels
+  as extra columns.
+
+### 3.7 Viewer (planned, step 5)
+
+Interactive exploration of one system at a time: an orbit view at true separations with planets
+on their own size scale, and a hierarchical system map (stars → planets → moons) with
+information panels, reading the JSON of §3.6. Plan in `docs/NEXT_STEPS.md`.
+
 ## 4. Phases
 
 1. **Data layer:** catalog readers joined to stellar tables; loaders; tests (done).
@@ -218,6 +241,8 @@ dwarf sequence with a Kepler-calibrated offset and scatter; validated on Kepler 
 6. **Real-star conditioning** + survey-sensitivity models (done 2026-10-15).
 7. **Learned components** (amortised conditioning, detection emulators) — added
    where profiling shows they pay off.
+8. **Usability** (plan steps 4–5): summaries and exports (done 2026-10-15), interactive viewer
+   (planned).
 
 Each phase ends with a validation report (plots + metrics against data).
 

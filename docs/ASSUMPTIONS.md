@@ -146,7 +146,16 @@ assumptions.
 
 - **Climate.** Equilibrium temperatures use a Bond albedo of 0.3 for every planet and full
   heat redistribution (`t_eq0` is the zero-albedo value). It is not a surface temperature:
-  no greenhouse effect (Earth: 255 K vs 288 K); see A9.
+  no greenhouse effect (Earth: 255 K vs 288 K). Summaries and exports label it so.
+- **Illustrative surface temperature (A9).** Rocky planets get a rough mean surface
+  temperature (`describe.surface_temperature`, `t_surface_illustrative_k`), assuming an
+  Earth-like atmosphere wherever one is plausible: Earth's greenhouse factor 288/255 inside the
+  habitable zone (at least 273 K there, the carbonate–silicate cycle), and beyond it (a
+  snowball); Venus-scaled (× 2.46, a lower bound) inside the recent-Venus limit; T_eq itself
+  below 0.1 M⊕ (no lasting atmosphere). Planets between the recent-Venus and runaway limits are
+  "marginal". Envelope planets and giants have no surface. Not a climate model: atmospheres are
+  not drawn, and tidally locked planets hide large day–night contrasts. Planets that spent
+  > 100 Myr in an early runaway greenhouse are noted as likely to have lost water.
   Habitable zones are Kopparapu+2014, clamped outside 2600–7200 K
   (flagged `hz_extrapolated`; brown dwarfs, late M dwarfs, white dwarfs, A stars). Several
   stars combine as in Haghighipour & Kaltenegger 2013.
