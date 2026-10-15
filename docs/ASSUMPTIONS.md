@@ -114,7 +114,8 @@ assumptions.
 
 - **Climate.** Equilibrium temperatures use a Bond albedo of 0.3 for every planet and full
   heat redistribution (`t_eq0` is the zero-albedo value). It is not a surface temperature:
-  no greenhouse effect (Earth: 255 K vs 288 K); see A9. Habitable zones are Kopparapu+2014, clamped outside 2600–7200 K
+  no greenhouse effect (Earth: 255 K vs 288 K); see A9.
+  Habitable zones are Kopparapu+2014, clamped outside 2600–7200 K
   (flagged `hz_extrapolated`; brown dwarfs, late M dwarfs, white dwarfs, A stars). Several
   stars combine as in Haghighipour & Kaltenegger 2013.
 - **Spin (B30).** Rocky planets start with Kokubo & Genda 2010's giant-impact spins (~3 h,
