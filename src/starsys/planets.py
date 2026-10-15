@@ -603,13 +603,17 @@ def _node_in_plane(n_orb, n_plane):
 def _system_plane(k, pl, planes, a_au):
     """Refer ``incl_invariable`` and ``asc_node_invariable`` to the invariable plane of all planets
     of each host (in place). Until here they refer to the host's reference plane: the inner (HM-C)
-    system's invariable plane, or the plane drawn for the first model that placed planets."""
+    system's invariable plane, or the plane drawn for the first model that placed planets.
+    Also sets ``node_sky``, the longitude of each orbit's ascending node on the sky (from +x
+    towards +y; with ``incl_sky`` the orbit normal is (sin i sin node, -sin i cos node, cos i))."""
+    pl["node_sky"] = np.full(len(k), np.nan)
     ok = np.isfinite(planes[k, 0])
     if not ok.any():
         return
     idx = np.flatnonzero(ok)
     kk = k[idx]
     normals = gp.orbit_normals(planes[kk], pl["incl_invariable"][idx], pl["asc_node_invariable"][idx])
+    pl["node_sky"][idx] = np.arctan2(normals[:, 0], -normals[:, 1]) % (2 * np.pi)
     e = np.clip(pl["ecc"][idx], 0.0, 0.999)
     lw = pl["planet_mass"][idx] * np.sqrt(a_au[idx] * (1.0 - e * e))  # host mass is common to a host's planets
     total = np.zeros((len(planes), 3))
@@ -641,6 +645,7 @@ def _add_pulsar_planets(result, systems, components, evolved: ev.EvolvedModel, r
         "omega": p["omega"], "incl_mut": o["incl_mut"], "incl_invariable": o["incl_mut"],
         "asc_node_invariable": o["asc_node"], "incl_sky": o["incl_sky"], "mean_anom": p["mean_anom"],
         "mass_init": p["planet_mass"], "radius_init": p["planet_radius"], "lost_envelope": np.zeros(n, dtype=bool),
+        "node_sky": np.full(n, np.nan),  # referred to their own plane only
     }
     out = {key: np.concatenate([result[key], add[key]]) for key in result}
     kind = (out["host_kind"] == "P").astype(np.int8)

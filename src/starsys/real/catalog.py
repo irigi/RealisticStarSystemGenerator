@@ -99,6 +99,28 @@ class SystemRecord:
 
 # --- catalogue loading -------------------------------------------------------------------
 
+TABLE_CACHE = DATA_DIR / "real" / "tables"
+
+
+def _read_table(path, reader) -> pd.DataFrame:
+    """``reader(path)`` as a DataFrame, cached as a pickle next to the other caches (rebuilt when
+    the catalogue file is newer)."""
+    cache = TABLE_CACHE / (path.name + ".pkl")
+    if cache.exists() and cache.stat().st_mtime >= path.stat().st_mtime:
+        return pd.read_pickle(cache)
+    d = reader(path)
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    d.to_pickle(cache)
+    return d
+
+
+def _ecsv(path) -> pd.DataFrame:
+    return Table.read(path).to_pandas()
+
+
+def _csv(path) -> pd.DataFrame:
+    return pd.read_csv(path, comment="#", low_memory=False)
+
 _CENSUS_ID_COLS = ("Name", "OName", "GJ", "HD", "HIP", "Gaia", "TIC", "2MASS", "Var", "WD", "LHS", "LP", "Wolf",
                    "Ross", "BD", "CD", "CPD", "HR", "Karmn", "LTT", "NLTT", "LSPM", "Giclas")
 
@@ -116,7 +138,7 @@ def _split_ids(value) -> list[str]:
 
 @lru_cache(maxsize=1)
 def census() -> pd.DataFrame:
-    t = Table.read(CENSUS_FILE).to_pandas()
+    t = _read_table(CENSUS_FILE, _ecsv)
     t["Syst"] = t["Syst"].astype(str)
     t["Name"] = t["Name"].str.replace(r"^-+", "", regex=True).str.strip()
     return t
@@ -124,7 +146,7 @@ def census() -> pd.DataFrame:
 
 @lru_cache(maxsize=1)
 def nasa_hosts() -> pd.DataFrame:
-    d = pd.read_csv(NASA_FILE, comment="#", low_memory=False)
+    d = nasa_planets()
     n = d.groupby("hostname").size()
     h = d.drop_duplicates("hostname").reset_index(drop=True).copy()
     h["n_planets"] = h["hostname"].map(n).to_numpy()
@@ -133,17 +155,17 @@ def nasa_hosts() -> pd.DataFrame:
 
 @lru_cache(maxsize=1)
 def nasa_planets() -> pd.DataFrame:
-    return pd.read_csv(NASA_FILE, comment="#", low_memory=False)
+    return _read_table(NASA_FILE, _csv)
 
 
 @lru_cache(maxsize=1)
 def bsc() -> pd.DataFrame:
-    return Table.read(BSC_FILE).to_pandas()
+    return _read_table(BSC_FILE, _ecsv)
 
 
 @lru_cache(maxsize=1)
 def pastel() -> pd.DataFrame:
-    p = Table.read(PASTEL_FILE).to_pandas()
+    p = _read_table(PASTEL_FILE, _ecsv)
     p["key"] = p["ID"].map(names.key)
     p["year"] = pd.to_numeric(p["bibcode"].str[:4], errors="coerce")
     return p
@@ -151,7 +173,7 @@ def pastel() -> pd.DataFrame:
 
 @lru_cache(maxsize=1)
 def wds() -> pd.DataFrame:
-    w = Table.read(WDS_FILE).to_pandas()
+    w = _read_table(WDS_FILE, _ecsv)
     w["disc_key"] = w["Disc"].astype(str).str.replace(" ", "").str.upper()
     w["comp_key"] = w["Comp"].fillna("").astype(str).str.replace(r"[\s,]", "", regex=True).str.upper()
     return w
