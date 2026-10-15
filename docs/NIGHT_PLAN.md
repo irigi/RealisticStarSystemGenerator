@@ -35,10 +35,10 @@ unticked item.
    own seed (separate SeedSequence streams for stars, planets, moons), so the star map can draw
    the star alone and planets on click, identically. System k of a run = hash(master, k). Tests:
    same ID -> identical system regardless of batch; stars-only matches the full draw.
-2. [ ] **System viewer** `python -m starsys.view` (and `python -m starsys.real NAME --view`):
+2. [x] **System viewer** (done: `starsys.view`, `python -m starsys.view`) `python -m starsys.view` (and `python -m starsys.real NAME --view`):
    system map tree, orbit view (true separations, HZ shading, zoom/pan, lin/log, time slider),
    info panel, Prev/Next/go-to-ID, filters, export current system. Off-screen PNG checks.
-3. [ ] **Procedural artwork**: textures per class (rocky: oceans/continents/ice caps/deserts/
+3. [x] **Procedural artwork** (done: `starsys.view.art`; refine if time remains): textures per class (rocky: oceans/continents/ice caps/deserts/
    lava; giants: banded with storms, colour by temperature class (Sudarsky-like); ice giants;
    stars by Teff with limb darkening; moons; rings optional). Seeded per body.
 4. [ ] **Galaxy model** `starsys.galaxy`: research notes in docs; density (thin/thick disc,
@@ -65,3 +65,15 @@ unticked item.
   from mix(master, block, j). Stars-only draws stay batched (fast for the star map), planets
   ~5 ms per system on click. ID format `S<master>-<k>`; galaxy IDs `G<ix>.<iy>.<iz>-<j>` reuse
   `ids.complete`.
+
+- D2 (item 2): Pioneer's system map is a vertical column; I used one horizontal row per star
+  (planets left to right, moons hanging below), which suits a widescreen window and multiple
+  stars (one row each, brackets show the hierarchy, a dashed bracket and a "AB" row for
+  circumbinary planets). Body sizes ∝ R^0.5 (monotonic), stars capped.
+- D3 (item 2): the orbit view is face-on in one plane (mutual inclinations ignored); companions
+  lack an orbital phase in the generator, so it is taken from the body's art seed. Log scale
+  maps distance from the view centre; it switches on automatically when the orbits span > 30x.
+- D4 (item 3): no rings (no ring model in the generator; the viewer shows only generated
+  physics). Giant palettes follow Sudarsky classes; star colours are blackbody, saturated x2.2
+  for display. Real-star planets keep catalogue names but rows show the suffix ("b").
+- D5 (item 2): `--real NAME` shows the conditioned realisations; Previous/Next walk them.

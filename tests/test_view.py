@@ -1,0 +1,70 @@
+import os
+
+import numpy as np
+import pytest
+
+pytest.importorskip("PySide6")
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+from starsys import export as ex  # noqa: E402
+from starsys import ids  # noqa: E402
+from starsys.view import art  # noqa: E402
+from starsys.view import model as md  # noqa: E402
+
+
+def test_art_is_deterministic_and_varied():
+    giant = {"type": "giant", "t_eq_k": 120, "rotation_h": 10, "mass": 300}
+    a, b = art.render(giant, 48, 5), art.render(giant, 48, 5)
+    assert a.shape == (48, 48, 4) and np.array_equal(a, b)
+    assert not np.array_equal(a, art.render(giant, 48, 6))
+    for body in ({"teff": 5800, "kind": "star"}, {"teff": 0, "kind": "black hole"},
+                 {"type": "rocky", "climate": "temperate", "t_eq_k": 255, "mass": 1},
+                 {"type": "envelope", "t_eq_k": 80}, {"composition": "ice", "heat_flux_w_m2": 0.01}):
+        img = art.render(body, 32, 1)
+        assert img[16, 16, 3] == 255  # opaque centre
+    r, g, bl = art.star_rgb(3000)
+    assert r > g > bl  # cool stars are red-orange
+    r, g, bl = art.star_rgb(20000)
+    assert bl > r
+
+
+def test_model_positions_follow_kepler():
+    m = md.build(ex.system_dict(ids.system("S1-4"), 0))
+    assert m.order[0] == "A" and "AB b" in m.bodies and m.bodies["AB b"].parent == "A+B"
+    p0 = md.positions(m, 0.0)
+    per = m.bodies["AB b"].orbit[3]
+    p1 = md.positions(m, per)
+    assert np.allclose(p0["AB b"], p1["AB b"], atol=1e-2 * m.bodies["AB b"].orbit[0])
+    # barycentre at the origin: stars weighted by mass cancel
+    w = {s.name: s.d["mass"] for s in m.stars}
+    com = sum(w[n] * np.array(p0[n]) for n in w) / sum(w.values())
+    assert np.allclose(com, 0, atol=1e-9)
+    e = md.kepler(np.array([0.3, 2.0]), np.array([0.5, 0.9]))
+    assert np.allclose(e - np.array([0.5, 0.9]) * np.sin(e), [0.3, 2.0])
+
+
+def test_window_navigation_and_selection(tmp_path):
+    from PySide6.QtWidgets import QApplication
+
+    from starsys.view.app import SequenceSource, SystemWindow
+    app = QApplication.instance() or QApplication([])
+    w = SystemWindow(SequenceSource(1), 3)
+    w.show()
+    app.processEvents()
+    w.load(3)
+    first = w.model.d["stars"][0]["mass"]
+    w.step(+1)
+    assert w.k == 4 and w.id_edit.text() == "S1-4"
+    w.step(-1)
+    assert w.k == 3 and w.model.d["stars"][0]["mass"] == first
+    w.filter.setCurrentText("multiple stars")
+    w.step(+1)
+    assert w.model.d["n_stars"] > 1
+    name = w.model.order[-1]
+    w.select(name)
+    assert name in w.info.toHtml() or w.model.bodies[name].short in w.info.toHtml()
+    w.id_edit.setText("S1-75")
+    w.goto_text()
+    assert w.k == 75
+    assert not w.grab().isNull()
+    w.close()
