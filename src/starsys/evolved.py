@@ -260,6 +260,8 @@ def _host_track(tab, o, n, mi, m_end, beta, t_ref, m_ref, teff_hi, teff_lo, nsub
         m1, m2 = tab[o + r, 0], tab[o + r + 1, 0]
         if m1 >= m_end:
             break
+        if m2 <= m1:
+            continue
         ph1, ph2 = tab[o + r, 6], tab[o + r + 1, 6]
         if ph1 < 2 or ph2 < 2:
             continue  # still on the main sequence
@@ -306,7 +308,7 @@ def _decay_kernel(tab, off, cnt, f, j, mi, m_end, beta, t_ref, m_ref, start, a0,
         for i in range(start[h], start[h + 1]):
             q_hi = mp[i] / m_min
             # The star overfills its Roche lobe (Eggleton 1983) when R > r_L a: engulfed.
-            big_q = (m_min / mp[i]) ** (1.0 / 3.0)
+            big_q = (m_min / max(mp[i], 1e-30)) ** (1.0 / 3.0)
             r_lobe = 0.49 * big_q**2 / (0.6 * big_q**2 + math.log(1.0 + big_q))
             if r_lobe * a0[i] > 2.0 * r_max and bound * q_hi * (1 + q_hi) < 1e-8 * a0[i] ** 8:
                 engulfed[i] = False

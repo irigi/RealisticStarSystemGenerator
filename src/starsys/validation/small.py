@@ -36,19 +36,15 @@ import numpy as np
 import pandas as pd
 
 from .. import planets
+from ..derived import s_eff
 from ..stars.population import draw_systems
 from ..units import EARTH_MASS_MSUN
 
 SMALL_MODELS = ("hmc", "hmc_m", "outer_small")
 
-# Kopparapu+2014 Table 1 (1 Earth mass): S_eff,sun, a, b, c, d for
-# S_eff = S_eff,sun + a T + b T^2 + c T^3 + d T^4, T = Teff - 5780 K (valid 2600-7200 K).
-KOPPARAPU = {
-    "recent_venus": (1.776, 2.136e-4, 2.533e-8, -1.332e-11, -3.097e-15),
-    "runaway_greenhouse": (1.107, 1.332e-4, 1.580e-8, -8.308e-12, -1.931e-15),
-    "maximum_greenhouse": (0.356, 6.171e-5, 1.698e-9, -3.198e-12, -5.575e-16),
-    "early_mars": (0.320, 5.547e-5, 1.526e-9, -2.874e-12, -5.011e-16),
-}
+# Kopparapu+2014 limits (1 Earth mass), from :func:`starsys.derived.s_eff`.
+KOPPARAPU = {"recent_venus": "recent_venus", "runaway_greenhouse": "runaway", "maximum_greenhouse": "max_greenhouse",
+             "early_mars": "early_mars"}
 HZ = {"conservative": ("runaway_greenhouse", "maximum_greenhouse"), "optimistic": ("recent_venus", "early_mars")}
 # Bryson+2021: (lower-bound model: value, +err, -err), (upper-bound model: ...).
 BRYSON2021 = {"conservative": ((0.37, 0.48, 0.21), (0.60, 0.90, 0.36)),
@@ -70,9 +66,7 @@ EINSTEIN_RADIUS_AU = 2.5  # at 0.5 Msun
 
 
 def seff(teff, limit):
-    s0, a, b, c, d = KOPPARAPU[limit]
-    t = np.clip(np.asarray(teff, dtype=float), 2600.0, 7200.0) - 5780.0
-    return s0 + a * t + b * t**2 + c * t**3 + d * t**4
+    return s_eff(teff, 1.0)[KOPPARAPU[limit]]
 
 
 def simulate(n_systems: int, seed: int = 0):

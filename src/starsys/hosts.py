@@ -88,6 +88,9 @@ def build_hosts(systems, components, rng, mdwarf: MDwarfModel | None = None,
         # Present state (differs from mass/radius/teff/luminosity for evolved hosts).
         "phase_now": c["phase"][idx].astype(float), "teff_now": c["teff"][idx].astype(float),
         "lum_now": c["luminosity"][idx].astype(float),
+        # Nearest companion of S-type hosts (binary model only): separation, mass, eccentricity, orbit normal.
+        "pert_a": np.full(n, np.nan), "pert_mass": np.full(n, np.nan), "pert_ecc": np.full(n, np.nan),
+        "pert_normal": np.full((n, 3), np.nan),
     }
     st = None
     if evolved is not None and old.any():
@@ -119,6 +122,8 @@ def build_hosts(systems, components, rng, mdwarf: MDwarfModel | None = None,
     if binaries.suppress:
         keep = rng.random(n) < bn.s_bin(st["a_near"][idx], binaries)
     h["plane"] = bn.s_type_planes(st["a_near_any"][idx], st["near_normal"][idx], rng, binaries)
+    h["pert_a"], h["pert_mass"] = st["a_near_any"][idx], st["near_mass"][idx]
+    h["pert_ecc"], h["pert_normal"] = st["near_ecc"][idx], st["near_normal"][idx]
     h = {key: v[keep] for key, v in h.items()}
 
     if binaries.circumbinary:
@@ -148,6 +153,8 @@ def build_hosts(systems, components, rng, mdwarf: MDwarfModel | None = None,
             "mass_now": m_pair, "alive": np.ones(k, dtype=bool),
             "p_bin": np.asarray(components.get("period_days", np.full(n_c, np.nan)), dtype=float)[s],
             "phase_now": c["phase"][p].astype(float), "teff_now": teff, "lum_now": lum,
+            "pert_a": np.full(k, np.nan), "pert_mass": np.full(k, np.nan), "pert_ecc": np.full(k, np.nan),
+            "pert_normal": np.full((k, 3), np.nan),
         }
         h = {key: np.concatenate([h[key], cb[key]]) for key in h}
         order = np.lexsort((h["kind"], h["component"]))

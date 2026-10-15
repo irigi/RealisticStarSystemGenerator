@@ -67,6 +67,7 @@ from __future__ import annotations
 import hashlib
 import math
 from dataclasses import astuple, dataclass
+from functools import lru_cache
 
 import numpy as np
 
@@ -112,6 +113,8 @@ class BinaryModel:
     align_sigma_deg: float = 10.0
     # Planets around hosts with a companion inside this separation are flagged ``multiple``.
     flag_a_max: float = 200.0
+    # Kozai-Lidov cycles of S-type planets driven by the nearest companion.
+    kozai: bool = True
 
     def key(self) -> str:
         return hashlib.sha1(repr((BOOST_VERSION, self.s_bin_knots, self.malmquist_exponent, self.luminosity_cut,
@@ -175,7 +178,9 @@ def structure(components) -> dict[str, np.ndarray]:
     of the nearest companion of >= 0.075 Msun, NaN if none), ``a_near_any`` (nearest companion
     of any mass), ``near_normal`` (orbit normal of that nearest companion, (n, 3)), and
     per-component (meaningful on primaries) ``pair_a_min``/``pair_a_max`` (circumbinary limits
-    of components 0+1, NaN without a companion) and ``pair_normal``.
+    of components 0+1, NaN without a companion) and ``pair_normal``. ``near_mass`` and ``near_ecc``
+    are the mass (the inner subsystem's for a companion's own orbit) and eccentricity of the orbit
+    at ``a_near_any``.
     """
     sys_ = np.asarray(components["system"])
     role = np.asarray(components["role"])
@@ -196,6 +201,8 @@ def structure(components) -> dict[str, np.ndarray]:
     a_near = np.full(n, np.nan)
     a_near_any = np.full(n, np.nan)
     near_normal = np.full((n, 3), np.nan)
+    near_mass = np.full(n, np.nan)
+    near_ecc = np.full(n, np.nan)
 
     def consider(host, sep, pert_mass, ecc, nrm, mu):
         nonlocal a_max
@@ -203,6 +210,8 @@ def structure(components) -> dict[str, np.ndarray]:
         closer = ~(a_near_any[host] <= sep)
         a_near_any[host] = np.where(closer, sep, a_near_any[host])
         near_normal[host] = np.where(closer[:, None], nrm, near_normal[host])
+        near_mass[host] = np.where(closer, pert_mass, near_mass[host])
+        near_ecc[host] = np.where(closer, ecc, near_ecc[host])
         stellar = (pert_mass >= HBL) & ~(a_near[host] <= sep)
         a_near[host] = np.where(stellar, sep, a_near[host])
 
@@ -242,6 +251,7 @@ def structure(components) -> dict[str, np.ndarray]:
         mp = mass[pp] + mass[pp + 1]
         pair_a_max[pp] = np.minimum(pair_a_max[pp], hw_s_type(a[cc], e[cc], mass[cc] / (mp + mass[cc])))
     return {"a_max": a_max, "a_near": a_near, "a_near_any": a_near_any, "near_normal": near_normal,
+            "near_mass": near_mass, "near_ecc": near_ecc,
             "pair_a_min": pair_a_min, "pair_a_max": pair_a_max, "pair_normal": pair_normal}
 
 
@@ -384,3 +394,110 @@ def draw_circumbinary(m_pair, a_min, a_max, p_bin, rng, model: BinaryModel = Bin
     ecc = np.minimum(model.cb_ecc_sigma * np.hypot(rng.normal(size=k), rng.normal(size=k)), 0.3)
     return {"host": host, "period": period, "a_au": a, "planet_mass": mass, "planet_radius": radius, "ecc": ecc,
             "omega": 2 * np.pi * rng.random(k), "mean_anom": 2 * np.pi * rng.random(k)}
+
+
+# --- Kozai-Lidov cycles ------------------------------------------------------------------
+
+KOZAI_VERSION = 1
+KL_COS_MAX = math.cos(math.radians(39.23))  # cycles need 39.2 < i < 140.8 deg (quadrupole)
+KL_COS_GRID = np.linspace(0.02, KL_COS_MAX, 30)
+KL_E0_GRID = np.array([0.01, 0.05, 0.1, 0.2, 0.3, 0.5, 0.7])
+KL_N_QUANTILES = 201
+C_AU_YR = 63241.077  # speed of light, au / yr
+GM_SUN_AU_YR = 4.0 * math.pi**2  # au^3 / yr^2
+
+
+def _kl_rhs(t, y):
+    """Test-particle quadrupole Kozai-Lidov equations (time in units of the KL timescale;
+    Fabrycky & Tremaine 2007 eqs. with the outer orbit fixed; Naoz 2016 sec. 3)."""
+    e, inc, w = y
+    e = min(max(e, 1e-9), 1.0 - 1e-9)
+    j = math.sqrt(1.0 - e * e)
+    s2i, s2w = math.sin(inc) ** 2, math.sin(2.0 * w)
+    de = 15.0 / 8.0 * e * j * s2i * s2w
+    dw = 0.75 * (2.0 * j * j + 5.0 * math.sin(w) ** 2 * (e * e - s2i)) / j
+    di = -15.0 / 16.0 * e * e * s2w * math.sin(2.0 * inc) / j
+    return [de, di, dw]
+
+
+def _kl_quantiles(cos_i0, e0, n_omega=8, t_end=200.0, n_t=20000) -> np.ndarray:
+    """Quantiles of e over a uniformly sampled time, pooled over initial arguments of pericentre."""
+    from scipy.integrate import solve_ivp
+
+    t = np.linspace(0.0, t_end, n_t)
+    samples = []
+    for w0 in np.linspace(0.0, np.pi, n_omega, endpoint=False):
+        sol = solve_ivp(_kl_rhs, (0.0, t_end), [e0, math.acos(cos_i0), w0], t_eval=t, rtol=1e-8, atol=1e-10,
+                        method="DOP853")
+        samples.append(np.clip(sol.y[0], 0.0, 1.0))
+    return np.quantile(np.concatenate(samples), np.linspace(0.0, 1.0, KL_N_QUANTILES))
+
+
+@lru_cache(maxsize=1)
+def kozai_table() -> np.ndarray:
+    """(len(KL_COS_GRID), len(KL_E0_GRID), KL_N_QUANTILES) quantiles of e over a KL cycle; cached."""
+    path = BOOST_DIR / f"kozai_v{KOZAI_VERSION}.npy"
+    if path.exists():
+        return np.load(path)
+    table = np.array([[_kl_quantiles(c, e0) for e0 in KL_E0_GRID] for c in KL_COS_GRID])
+    BOOST_DIR.mkdir(parents=True, exist_ok=True)
+    np.save(path, table)
+    return table
+
+
+def kozai_timescale(a, m_host, m_planet_earth, a_c, m_c, e_c) -> np.ndarray:
+    """Quadrupole KL timescale (yr; Antognini 2015): 16/(30 pi) (M + m_c)/m_c P_c^2 / P (1 - e_c^2)^1.5."""
+    from .units import EARTH_MASS_MSUN
+
+    m_in = m_host + m_planet_earth * EARTH_MASS_MSUN
+    p_in = np.sqrt(a**3 / m_in)
+    p_out = np.sqrt(a_c**3 / (m_in + m_c))
+    return 16.0 / (30.0 * math.pi) * (m_in + m_c) / m_c * p_out**2 / p_in * (1.0 - np.clip(e_c, 0.0, 0.99) ** 2) ** 1.5
+
+
+def gr_precession_time(a, e, m_host) -> np.ndarray:
+    """Time (yr) for general-relativistic apsidal precession to advance by one radian."""
+    rate = 3.0 * GM_SUN_AU_YR**1.5 * m_host**1.5 / (C_AU_YR**2 * a**2.5 * (1.0 - np.clip(e, 0.0, 0.99) ** 2))
+    return 1.0 / rate
+
+
+@lru_cache(maxsize=1)
+def _laplace_b32_1():
+    alpha = np.linspace(0.0, 0.995, 400)
+    psi = np.linspace(0.0, 2.0 * np.pi, 1024, endpoint=False)
+    b = (np.cos(psi)[None, :] / (1.0 - 2.0 * alpha[:, None] * np.cos(psi)[None, :] + alpha[:, None] ** 2) ** 1.5)
+    return alpha, b.mean(axis=1) * 2.0
+
+
+def secular_rate(a_i, a_j, m_j, m_host) -> np.ndarray:
+    """Laplace-Lagrange apsidal precession rate (rad / yr) of orbit i forced by planet j
+    (Murray & Dermott 1999 eq. 7.55): n_i / 4 (m_j / M) alpha alpha_bar b_{3/2}^(1)(alpha)."""
+    from .units import EARTH_MASS_MSUN
+
+    inner = a_i < a_j
+    alpha = np.where(inner, a_i / a_j, a_j / a_i)
+    alpha_bar = np.where(inner, alpha, 1.0)
+    grid, b = _laplace_b32_1()
+    n_i = 2.0 * math.pi * np.sqrt(m_host / a_i**3)
+    return 0.25 * n_i * m_j * EARTH_MASS_MSUN / m_host * alpha * alpha_bar * np.interp(np.minimum(alpha, grid[-1]), grid, b)
+
+
+def kozai_draw(cos_i0, e0, rng) -> tuple[np.ndarray, np.ndarray]:
+    """Eccentricity and cos(inclination to the companion orbit) at a random phase of the KL
+    cycle that starts at (e0, i0); the Kozai constant sqrt(1 - e^2) cos i is conserved."""
+    table = kozai_table()
+    c = np.clip(np.abs(cos_i0), KL_COS_GRID[0], KL_COS_GRID[-1])
+    j = np.abs(np.log(np.maximum(e0, 1e-3))[:, None] - np.log(KL_E0_GRID)[None, :]).argmin(axis=1)
+    x = np.interp(c, KL_COS_GRID, np.arange(len(KL_COS_GRID)))
+    i0 = np.minimum(np.floor(x).astype(int), len(KL_COS_GRID) - 2)
+    w = x - i0
+    u = rng.random(len(c)) * (KL_N_QUANTILES - 1)
+    q0 = np.floor(u).astype(int)
+    q1 = np.minimum(q0 + 1, KL_N_QUANTILES - 1)
+    fq = u - q0
+    lo = table[i0, j, q0] * (1 - fq) + table[i0, j, q1] * fq
+    hi = table[i0 + 1, j, q0] * (1 - fq) + table[i0 + 1, j, q1] * fq
+    e = np.clip((1 - w) * lo + w * hi, 0.0, 0.999)
+    theta = np.sqrt(1.0 - np.clip(e0, 0.0, 0.999) ** 2) * np.abs(cos_i0)
+    cos_i = np.sign(cos_i0) * np.clip(theta / np.sqrt(1.0 - e**2), 0.0, 1.0)
+    return e, cos_i

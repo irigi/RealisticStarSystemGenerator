@@ -261,14 +261,19 @@ def expected_wide(mass, model: GiantModel = GiantModel()) -> np.ndarray:
     return np.where(mass < model.min_host_mass, 0.0, lam)
 
 
-def giant_radius(mass, flux_cgs, rng) -> np.ndarray:
-    """Radius (Earth radii) of a giant of the given mass (Earth masses) and bolometric flux."""
+def giant_radius_mean(mass, flux_cgs) -> np.ndarray:
+    """Radius (Earth radii) of a giant of the given mass (Earth masses) and bolometric flux, without scatter."""
     mass = np.asarray(mass, dtype=float)
     flux_cgs = np.asarray(flux_cgs, dtype=float)
     # The two branches cross at 141 Earth masses.
     cold = np.minimum(3.9 * (mass / 17.0) ** 0.514, 11.2 * (mass / 318.0) ** -0.04)
     hot = 2.45 * mass**-0.039 * flux_cgs**0.094
-    r = np.where(mass >= 150.0, np.maximum(cold, hot), cold)
+    return np.where(mass >= 150.0, np.maximum(cold, hot), cold)
+
+
+def giant_radius(mass, flux_cgs, rng) -> np.ndarray:
+    """Radius (Earth radii) of a giant of the given mass (Earth masses) and bolometric flux."""
+    r = giant_radius_mean(mass, flux_cgs)
     return r * np.exp(0.05 * rng.normal(size=len(r)))
 
 

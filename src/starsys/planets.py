@@ -65,11 +65,12 @@ from functools import lru_cache
 import numpy as np
 
 from . import binaries as bn
+from . import derived as dv
 from . import evolved as ev
 from .flags import (FLAG_BRIDGE, FLAG_CIRCUMBINARY, FLAG_COLD_EXTRAP, FLAG_COLOUR, FLAG_EVOLVED,  # noqa: F401
-                    FLAG_GIANT_HOST, FLAG_MULTIPLE, FLAG_NAMES, FLAG_POST_INTERACTION, FLAG_PULSAR,
-                    FLAG_SHORT_PERIOD, FLAG_SUBSTELLAR, FLAG_YOUNG)
-from .hosts import (HMC_COLOUR_RANGE, P_TYPE, YOUNG_AGE_GYR, build_hosts, flags_of, hmc_hosts,  # noqa: F401
+                    FLAG_GIANT_HOST, FLAG_HZ_EXTRAP, FLAG_KOZAI, FLAG_MOON, FLAG_MULTIPLE, FLAG_NAMES,
+                    FLAG_POST_INTERACTION, FLAG_PULSAR, FLAG_SHORT_PERIOD, FLAG_SUBSTELLAR, FLAG_YOUNG)
+from .hosts import (HMC_COLOUR_RANGE, P_TYPE, S_TYPE, YOUNG_AGE_GYR, build_hosts, flags_of, hmc_hosts,  # noqa: F401
                     host_flags)
 from .inner import hmc
 from .inner import short as sh
@@ -80,6 +81,7 @@ from .stars.spectral import bp_rp_from_teff, kepler_bp_rp_scatter
 from .syssim_catalogs import MODELS, available_catalog_ids, read_physical_header
 from .units import EARTH_MASS_MSUN, a_au_to_period, period_to_a_au
 
+LSUN_CGS, AU_CM = 3.828e33, 1.495978707e13
 GIANT_CLUSTER_ID = -1  # ``clusterid`` of giant-model planets
 SMALL_CLUSTER_ID = -2  # ``clusterid`` of small planets beyond HM-C's P_max
 PULSAR_CLUSTER_ID = -3  # ``clusterid`` of pulsar planets
@@ -94,6 +96,7 @@ DEFAULT_SMALL = sp.SmallPlanetModel()
 DEFAULT_BINARIES = bn.BinaryModel()
 DEFAULT_EVOLVED = ev.EvolvedModel()
 DEFAULT_SHORT = sh.ShortPeriodModel()
+DEFAULT_DERIVED = dv.DerivedModel()
 
 
 @lru_cache(maxsize=1)
@@ -109,7 +112,8 @@ def attach_planets(systems, components, seed=None, *, params: hmc.HMCParams | No
                    small: sp.SmallPlanetModel | None = DEFAULT_SMALL,
                    binaries: bn.BinaryModel | None = DEFAULT_BINARIES,
                    evolved: ev.EvolvedModel | None = DEFAULT_EVOLVED,
-                   short: sh.ShortPeriodModel | None = DEFAULT_SHORT, age: str = "fixed",
+                   short: sh.ShortPeriodModel | None = DEFAULT_SHORT,
+                   derived: dv.DerivedModel | None = DEFAULT_DERIVED, age: str = "fixed",
                    amd_pair_criterion: str = "hill") -> dict[str, np.ndarray]:
     """Draw planets for every component of every system.
 
@@ -139,6 +143,9 @@ def attach_planets(systems, components, seed=None, *, params: hmc.HMCParams | No
     short
         Planets between 0.5 d and HM-C's inner period limit (:class:`starsys.inner.short.ShortPeriodModel`);
         ``None`` for none.
+    derived
+        Derived properties (:class:`starsys.derived.DerivedModel`): insolation, equilibrium
+        temperature, habitable zone, spin. ``None`` leaves those columns out.
     age
         ``"fixed"``: photoevaporation uses HM-C's ``system_age`` (5 Gyr) for every star, as
         published. ``"star"``: use each star's own age (the authors list the fixed age as
@@ -158,7 +165,10 @@ def attach_planets(systems, components, seed=None, *, params: hmc.HMCParams | No
     (-2) and pulsar planets (-3), the angles ``incl_mut``/``incl_invariable``/
     ``asc_node_invariable`` refer to the inner system's invariable plane (or the host's
     reference plane without one). For giants, ``mass_init`` and ``radius_init`` equal the
-    final values. Planets of evolved hosts are on their present (expanded) orbits.
+    final values (for giants of evolved hosts, ``planet_radius`` is re-inflated by the present
+    flux). Planets of evolved hosts are on their present (expanded) orbits. With ``derived``:
+    ``insolation``, ``t_eq``, ``t_eq0``, ``hz``, ``t_lock_gyr`` and ``spin``
+    (:mod:`starsys.derived`).
     """
     if age not in ("fixed", "star"):
         raise ValueError("age must be 'fixed' or 'star'")
@@ -234,6 +244,8 @@ def attach_planets(systems, components, seed=None, *, params: hmc.HMCParams | No
         if binaries is not None:
             ml["rate"] = ml["rate"] * bn.boost_factor(mass, None, binaries)  # microlensing: field average
         k, pl = _add_small(k, pl, planes, rows, edge, colour, ml, mass, radius, teff, star_age, small, rng, limits)
+    if binaries is not None and binaries.kozai:
+        k, pl = _kozai(k, pl, planes, h, mass, rng)
     model = np.where(is_m[k], "hmc_m", "hmc").astype(object)
     if giants is not None:
         names = np.array([gp.COMPONENT_NAMES[c] for c in (gp.COLD, gp.HOT, gp.WIDE)], dtype=object)
@@ -250,14 +262,17 @@ def attach_planets(systems, components, seed=None, *, params: hmc.HMCParams | No
         is_giant = pl["clusterid"] == GIANT_CLUSTER_ID
         flags |= np.where(is_giant & ((mass[k] < lo) | (mass[k] > hi)), FLAG_GIANT_HOST, 0).astype(np.int32)
     flags |= small_flags
+    flags |= np.where(pl.pop("kozai_flag", np.zeros(len(k), dtype=bool)), FLAG_KOZAI, 0).astype(np.int32)
     flags |= np.where(pl["clusterid"] == SHORT_CLUSTER_ID, FLAG_SHORT_PERIOD, 0).astype(np.int32)
     a_au = period_to_a_au(pl["period"], mass[k])
     host_mass = mass[k]
     if evolved is not None and h["evolved"].any():
+        a_old = a_au
         a_au, host_mass, keep = _evolve_orbits(k, pl, a_au, h, evolved)
         pl = {key: v[keep] for key, v in pl.items()}
-        k, model, flags, a_au, host_mass = k[keep], model[keep], flags[keep], a_au[keep], host_mass[keep]
+        k, model, flags, a_au, host_mass, a_old = (x[keep] for x in (k, model, flags, a_au, host_mass, a_old))
         pl["period"] = a_au_to_period(a_au, host_mass)
+        _reinflate_giants(k, pl, a_old, a_au, h)
     comp = host[k]
     result = {
         "system": sys_of_host[k],
@@ -273,6 +288,10 @@ def attach_planets(systems, components, seed=None, *, params: hmc.HMCParams | No
     result.update(pl)
     if evolved is not None:
         result = _add_pulsar_planets(result, systems, components, evolved, rng)
+    if derived is not None:
+        extra = dv.derive_properties(result, systems, components, derived)
+        result["flags"] = result["flags"] | extra.pop("hz_flags")
+        result.update(extra)
     return result
 
 
@@ -352,6 +371,112 @@ def _circumbinary(kk, p, idx, h, rows, binaries: bn.BinaryModel, rng):
     p = {key: np.concatenate([p[key], add[key]]) for key in p}
     order = np.lexsort((p["period"], kk))
     return kk[order], {key: v[order] for key, v in p.items()}
+
+
+def _kozai(k, pl, planes, h, mass, rng):
+    """Kozai-Lidov cycles of S-type planets driven by the host's nearest companion.
+
+    A planet cycles if its orbit is inclined 39.2-140.8 deg to the companion's and the
+    quadrupole KL timescale is shorter than the system age, the general-relativistic
+    precession time and the apsidal precession time forced by the host's other planets
+    (Laplace-Lagrange; Innanen+1997, Takeda+2008: planets tied to each other precess together
+    instead of cycling). Its
+    eccentricity and inclination are then drawn at a random phase of the cycle
+    (:func:`starsys.binaries.kozai_draw`). Planets whose pericentre comes inside twice the
+    stellar radius or their Roche limit, whose apocentre crosses the HW99 limit, or that become
+    unstable with a neighbour are removed. Returns (k, pl) with ``kozai_flag``."""
+    order = np.lexsort((pl["period"], k))
+    k, pl = k[order], {key: v[order] for key, v in pl.items()}
+    n = len(k)
+    flag = np.zeros(n, dtype=bool)
+    pl["kozai_flag"] = flag
+    host_ok = (h["kind"] == S_TYPE) & np.isfinite(h["pert_a"]) & np.isfinite(h["pert_normal"][:, 0])
+    host_ok &= np.isfinite(planes[:, 0])
+    cand = np.flatnonzero(host_ok[k])
+    if not len(cand):
+        return k, pl
+    kc = k[cand]
+    ms = mass[kc]
+    a_all = period_to_a_au(pl["period"], mass[k])
+    a = a_all[cand]
+    e0 = pl["ecc"][cand]
+    normal = gp.orbit_normals(planes[kc], pl["incl_invariable"][cand], pl["asc_node_invariable"][cand])
+    n_c = h["pert_normal"][kc]
+    cos_i = np.clip(np.sum(normal * n_c, axis=1), -1.0, 1.0)
+    t_kl = bn.kozai_timescale(a, ms, pl["planet_mass"][cand], h["pert_a"][kc], h["pert_mass"][kc], h["pert_ecc"][kc])
+    act = (np.abs(cos_i) < bn.KL_COS_MAX) & (t_kl < h["age"][kc] * 1e9) & (t_kl < bn.gr_precession_time(a, e0, ms))
+    # Secular coupling to the other planets of the same host.
+    start = np.searchsorted(k, kc, side="left")
+    stop = np.searchsorted(k, kc, side="right")
+    cnt = stop - start
+    pi = np.repeat(np.arange(len(cand)), cnt)
+    pj = np.repeat(start - np.cumsum(np.r_[0, cnt[:-1]]), cnt) + np.arange(cnt.sum())
+    other = pj != cand[pi]
+    pi, pj = pi[other], pj[other]
+    # Apsidal precession forced on the planet by the others: faster than the KL rate quenches the
+    # cycle, as GR precession does (an inner planet tied to a giant follows it instead).
+    nu = np.bincount(pi, weights=bn.secular_rate(a[pi], a_all[pj], pl["planet_mass"][pj], ms[pi]),
+                     minlength=len(cand))
+    act &= nu * t_kl < 1.0
+    sel = np.flatnonzero(act)
+    if not len(sel):
+        return k, pl
+    idx = cand[sel]
+    e_new, cos_new = bn.kozai_draw(cos_i[sel], e0[sel], rng)
+    # New orbit normal: same azimuth around the companion's orbit normal, new inclination.
+    nc = n_c[sel]
+    perp = normal[sel] - cos_i[sel, None] * nc
+    norm = np.linalg.norm(perp, axis=1, keepdims=True)
+    perp = np.where(norm > 1e-9, perp / np.maximum(norm, 1e-12), gp._random_unit_vectors(len(sel), rng))
+    sin_new = np.sqrt(1.0 - cos_new**2)
+    nrm = cos_new[:, None] * nc + sin_new[:, None] * perp
+    nrm /= np.linalg.norm(nrm, axis=1, keepdims=True)
+    ref = planes[k[idx]]
+    inc = np.arccos(np.clip(np.sum(nrm * ref, axis=1), -1.0, 1.0))
+    t = np.where(np.abs(ref[:, 2:3]) < 0.9, [[0.0, 0.0, 1.0]], [[1.0, 0.0, 0.0]])
+    u = np.cross(t, ref)
+    u /= np.linalg.norm(u, axis=1, keepdims=True)
+    v = np.cross(ref, u)
+    d = np.cross(ref, nrm)
+    node = np.mod(np.arctan2(np.sum(d * v, axis=1), np.sum(d * u, axis=1)), 2.0 * np.pi)
+    pl["ecc"][idx] = e_new
+    pl["incl_invariable"][idx] = inc
+    pl["incl_mut"][idx] = inc
+    pl["asc_node_invariable"][idx] = node
+    pl["incl_sky"][idx] = np.arccos(np.clip(nrm[:, 2], -1.0, 1.0))
+    flag[idx] = True
+    # Removal.
+    from .evolved import RSUN_AU
+
+    ai = a_all[idx]
+    peri, apo = ai * (1.0 - e_new), ai * (1.0 + e_new)
+    rp_au = pl["planet_radius"][idx] / 23454.8  # Earth radii -> au
+    roche = 2.16 * rp_au * (mass[k[idx]] / (pl["planet_mass"][idx] * EARTH_MASS_MSUN)) ** (1.0 / 3.0)
+    gone = (peri < np.maximum(2.0 * h["radius"][k[idx]] * RSUN_AU, roche)) | (apo > h["a_max"][k[idx]])
+    drop = np.zeros(n, dtype=bool)
+    drop[idx[gone]] = True
+    for i in idx[~gone]:
+        for j in (i - 1, i + 1):
+            if 0 <= j < n and k[j] == k[i] and not drop[j]:
+                lo, hi = (j, i) if a_all[j] < a_all[i] else (i, j)
+                if not gp.pair_stable(pl["planet_mass"][lo], pl["planet_mass"][hi], a_all[lo], pl["ecc"][lo],
+                                      a_all[hi], pl["ecc"][hi], mass[k[i]]):
+                    drop[i] = True
+                    break
+    return k[~drop], {key: v[~drop] for key, v in pl.items()}
+
+
+def _reinflate_giants(k, pl, a_old, a_now, h):
+    """Giant planets of evolved hosts take the radius of the present flux (giants re-inflate
+    around red giants: Lopez & Fortney 2016; Grunblatt+2016), keeping each planet's scatter."""
+    g = h["evolved"][k] & (pl["clusterid"] == GIANT_CLUSTER_ID)
+    if not g.any():
+        return
+    kg = k[g]
+    f_old = h["luminosity"][kg] * LSUN_CGS / (4 * np.pi * (a_old[g] * AU_CM) ** 2)
+    f_now = h["lum_now"][kg] * LSUN_CGS / (4 * np.pi * (a_now[g] * AU_CM) ** 2)
+    m = pl["planet_mass"][g]
+    pl["planet_radius"][g] *= gp.giant_radius_mean(m, f_now) / gp.giant_radius_mean(m, f_old)
 
 
 def _evolve_orbits(k, pl, a_au, h, evolved: ev.EvolvedModel):
