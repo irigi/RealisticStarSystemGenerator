@@ -98,7 +98,9 @@ an effective age normalised to HM-C's Kepler fit and checked against Berger+2020
 valley vs age) and stellar XUV scaling with stellar type (not yet: bolometric flux already
 scales per star, a separate XUV ratio would need α_pret re-fitted). HM-C's masses above ~4 R⊕
 are rescaled to RV measurements (Otegi+2020; `starsys.inner.rv_masses`), as Kepler constrains
-only radii there.
+only radii there. A metallicity dependence (Petigura+2018; `starsys.inner.metallicity`) shifts
+planet masses and the period distribution with [Fe/H], centred on the Kepler field mean so the
+Kepler averages are kept.
 
 Attachment to model stars (`starsys.planets`): host colour from Teff via the Mamajek
 dwarf sequence with a Kepler-calibrated offset and scatter; validated on Kepler stars
@@ -111,7 +113,8 @@ dwarf sequence with a Kepler-calibrated offset and scatter; validated on Kepler 
   SysSim; Dressing & Charbonneau 2015; Ment & Charbonneau 2023 for mid-to-late M).
   Implemented in `starsys.inner.mdwarf` (validated: `docs/validation/planets.md` §4.2):
   more clusters, a born-bare fraction, a lower inner period limit, planet mass ∝ M★
-  below 0.5 M☉, and disk-mass-scaled occurrence below 0.1 M☉ (flagged).
+  below 0.5 M☉, and disk-mass-scaled occurrence below 0.1 M☉ (flagged). The four early-M
+  parameters are degenerate and drawn per host from the sets that fit equally well.
 - **Short periods (0.5–3 d) for FGK stars:** Hsu+2019 occurrence below HM-C's 3 d limit and
   Sanchis-Ojeda+2014's USP trend with stellar type. Implemented in `starsys.inner.short`
   (validated: `docs/validation/planets.md`, backlog B7).
@@ -156,8 +159,9 @@ dwarf sequence with a Kepler-calibrated offset and scatter; validated on Kepler 
   equilibrium temperature, Kopparapu+2014 habitable zone (several stars combined as
   Haghighipour & Kaltenegger 2013), the time spent in an early runaway greenhouse while the
   young star was brighter (Luger & Barnes 2015, from MIST histories), and spin: primordial
-  spins (Kokubo & Genda 2010 for rocky planets) slowed by the stellar tide (Gladman+1996),
-  giving tidal locking, rotation periods and obliquities. Kozai–Lidov cycles from stellar
+  spins (Kokubo & Genda 2010 for rocky planets) slowed by the stellar tide (Gladman+1996) and
+  by the moons' tidal migration (angular momentum), giving tidal locking, rotation periods and
+  obliquities. Kozai–Lidov cycles from stellar
   companions, quenched by GR and planet–planet precession. Tidal decay on the giant branches
   (Villaver & Livio 2009).
 - **Moons** (theory-driven; no exomoon detections to fit):
@@ -206,4 +210,5 @@ dwarf sequence with a Kepler-calibrated offset and scatter; validated on Kepler 
 Each phase ends with a validation report (plots + metrics against data).
 
 Current status and the concrete plan for the next phase: `docs/NEXT_STEPS.md`. What the model
-assumes where data run out, and the alternatives: `docs/ASSUMPTIONS.md`.
+assumes where data run out, the alternatives, and the user settings that span them:
+`docs/ASSUMPTIONS.md`.

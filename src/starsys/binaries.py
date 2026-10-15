@@ -85,6 +85,10 @@ class BinaryModel:
     suppress: bool = True
     # Single-star boost of the transit-fitted models (mock magnitude-limited Kepler sample).
     boost: bool = True
+    # Setting (B21): share (in log) of the boost that goes into HM-C's cluster count where f_swpa
+    # is already 1. 1 (default) keeps the Kepler planets per star (+28-45% systems with two
+    # transiting planets per single); 0 keeps Kepler's multiplicity mix (14-29% fewer planets).
+    boost_cluster_share: float = 1.0
     malmquist_exponent: float = 1.5
     luminosity_cut: float = 1.75
     boost_mass_edges: tuple = (0.01, 0.05, 0.08, 0.12, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.35,
@@ -346,11 +350,12 @@ def _ztp_inverse(target):
     return lam
 
 
-def apply_boost(rows, colour, boost) -> tuple[np.ndarray, np.ndarray]:
+def apply_boost(rows, colour, boost, cluster_share: float = 1.0) -> tuple[np.ndarray, np.ndarray]:
     """Scale the expected number of inner planets per star by ``boost`` (per host).
 
     f_swpa is raised to min(1, B f_swpa) through ``f_swpa_med``; what is left (hosts where
     f_swpa would exceed 1) multiplies the mean number of clusters, through lambda_c.
+    ``cluster_share`` (0-1): only rest^cluster_share goes into the cluster count (B21).
     Returns the new rows and the factor that went into the cluster count."""
     from .inner import hmc
 
@@ -360,6 +365,7 @@ def apply_boost(rows, colour, boost) -> tuple[np.ndarray, np.ndarray]:
     rows[:, hmc.I_FMED] += f_new - f  # the linear f_swpa(colour) at this host's colour becomes f_new
     rest = np.where(f_new > 0, f * boost / np.where(f_new > 0, f_new, 1.0), 1.0)
     lam = np.exp(rows[:, hmc.I_LRC])
+    rest = rest ** cluster_share
     need = rest > 1.0 + 1e-12
     rows[need, hmc.I_LRC] = np.log(_ztp_inverse(_ztp_mean(lam[need]) * rest[need]))
     return rows, rest

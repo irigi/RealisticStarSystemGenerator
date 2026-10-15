@@ -33,9 +33,10 @@ Verdicts as in [planets.md](planets.md): match, consistent, or tension (with a b
 | Giants inside 0.1 au with moons | 11% | Barnes & O'Brien 2002: only small moons survive | consistent |
 | Early runaway greenhouse of conservative-HZ planets, median by host mass 0.1–0.2 / 0.35–0.5 / 0.65–0.8 / > 0.8 M☉ | 79 / 21 / 0 / 0 Myr (84th pct 180 / 64 / 3 / 0) | tens to hundreds of Myr in M-dwarf HZs, a few tens for K dwarfs, negligible above 0.8 M☉ (Luger & Barnes 2015, Fig. 4) | consistent |
 | Io-like moons: tidal heat of Io itself | 9e13 W (2.2 W/m²) | ~1e14 W, ~2.5 W/m² | match |
+| Day length of rocky planets with a Moon-like moon (mass ratio 0.008–0.016), moons slowing the spin (A8) | median 13 h (16–84%: 9–60 h); heavier moons: 76% day = month | Earth 24 h with the Moon at 60 R⊕ (the model's Moon ends near 50 R⊕, which gives ~16 h) | consistent |
 
-**Runtime** per 100,000 systems: planets with derived properties and Kozai–Lidov 23–24 s
-(18 s before phase 5), moons 0.1 s. First use builds the Kozai cycle table (`data/binaries`, ~6 min).
+**Runtime** per 100,000 systems: planets with derived properties and Kozai–Lidov 27–29 s
+(23–24 s before step 2's metallicity and early-M posterior; 18 s before phase 5), moons 0.2 s. First use builds the Kozai cycle table (`data/binaries`, ~6 min).
 
 ## 5.1 Tidal decay on the giant branches (B23)
 
@@ -218,3 +219,19 @@ All moons are theory-driven and flagged `moon`.
   Io's k₂/Q = 0.015 (Lainey+2009), which gives Io 9e13 W. About 26 moons per 1000 planets
   exceed the Earth's internal heat flow (0.09 W/m²).
 - **Worldbuilding census:** 2.8 moons of ≥ 0.1 M⊕ in a conservative HZ per 1000 main-sequence stars.
+- **Moons slow their planet's spin** (A8, 2026-10-15): the orbital angular momentum a moon
+  gains by tidal migration comes out of the planet's spin (I = α M R²). Planets with an impact
+  moon start from the impact's 5 h spin, and a prograde moon stops at the double-synchronous
+  orbit (planet day = month, as Pluto–Charon), which conserves angular momentum. Free rocky
+  planets (`python -m starsys.validation.moons`, 100,000 systems):
+
+  | Largest moon (mass ratio) | Median day | 16–84% | Day = month |
+  |---|---|---|---|
+  | none | 3.5 h | 2.1–7.4 h | — |
+  | 0.004–0.008 | 7.3 h | 6.3–11 h | 3% |
+  | 0.008–0.016 (the Moon 0.0123) | 13 h | 8.8–60 h | 12% |
+  | 0.016–0.03 | 260 h | 46–440 h | 76% |
+
+  The Earth's 24 h day corresponds to the Moon at 60 R⊕; with Q = 100 the model's Moon ends
+  near 50 R⊕ (~16 h). Moonless rocky planets keep their primordial ~3.5 h days: atmospheric
+  thermal tides (Venus) are not modelled.

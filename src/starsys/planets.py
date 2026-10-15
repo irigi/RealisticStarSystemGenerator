@@ -248,7 +248,7 @@ def attach_planets(systems, components, seed=None, *, params: hmc.HMCParams | No
     star_age = photoevaporation_age(h["age"]) if age == "star" else None
     rest = np.ones(len(host))
     if binaries is not None and binaries.boost:
-        rows, rest = bn.apply_boost(rows, colour, bn.boost_factor(mass, teff, binaries))
+        rows, rest = bn.apply_boost(rows, colour, bn.boost_factor(mass, teff, binaries), binaries.boost_cluster_share)
     limits = (h["a_min"], h["a_max"]) if binaries is not None else None
     fixed_plane = np.isfinite(h["plane"][:, 0])
     if short is not None:

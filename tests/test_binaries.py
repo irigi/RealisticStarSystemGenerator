@@ -45,6 +45,10 @@ def test_boost_preserves_expected_planet_count():
 
     assert expected(out) == pytest.approx(1.3 * expected(rows), rel=1e-6)
     assert rest[0] == pytest.approx(1.0) and rest[2] == pytest.approx(1.3)
+    # boost_cluster_share = 0 (B21 setting): where f_swpa is already 1 the cluster count is kept.
+    out0, rest0 = bn.apply_boost(rows, colour, np.array([1.3, 1.3, 1.3]), cluster_share=0.0)
+    assert out0[2, hmc.I_LRC] == rows[2, hmc.I_LRC] and rest0[2] == 1.0
+    assert expected(out0)[0] == pytest.approx(1.3 * expected(rows)[0], rel=1e-6)
 
 
 def test_planets_respect_dynamical_limits(population):

@@ -13,8 +13,8 @@ not kept as open tasks.
 
 1. **Settle the backlog** — done (2026-10-15): backlog sorted into planned work (below),
    assumptions (`docs/ASSUMPTIONS.md`) and things we won't do; repository cleaned up.
-2. **Worldbuilding-relevant fixes** (one session): A1–A4 and A7–A8 below, A5–A6 if time
-   allows.
+2. **Worldbuilding-relevant fixes** — done (2026-10-15): A1–A4, A7, A8 below. A5–A6 left
+   open (optional).
 3. **Phase 6, real-star conditioning** (`DESIGN.md` §3.5): systems around named stars,
    conditioned on their known planets and on survey sensitivity.
 4. **Usability:** readable per-system summaries and export formats, including A9.
@@ -30,6 +30,7 @@ python -m starsys.validation.census        # stellar population vs 20-pc census
 python -m starsys.validation.hmc --catalogs 6-25 --criterion hill   # HM-C port check
 python -m starsys.validation.planets --catalogs 1-30                # planet glue on Kepler stars
 python -m starsys.validation.planets --valley                       # radius valley vs age (Berger+2020)
+python -m starsys.validation.planets --metallicity [--fit]          # [Fe/H] dependence vs Petigura+2018
 python -m starsys.validation.mdwarf                                 # M dwarfs vs DC15, Hsu+2020, Ment+2023, K2 UCDs
 python -m starsys.validation.giants                                 # giants vs CLS, RV, direct imaging
 python -m starsys.validation.small                                  # small planets > 300 d vs η⊕, microlensing
@@ -53,50 +54,40 @@ use: the MIST grid and primary-mass weights (`data/stellar/`), the HM-C edge tab
 
 Item numbers (B1–B30) are kept so that older commits and docs still resolve.
 
-### A. Planned: improvable with the data and papers we have (step 2)
+### A. Planned: improvable with the data and papers we have
 
-- **A1 (B21) Multiplicity around K and M dwarfs.** The single-star boost goes into HM-C's
-  cluster count where f_swpa is already 1, so the share of hosts with ≥ 5 inner planets rises
-  (M: 0.49 → 0.68, K: 0.15 → 0.32): too many TRAPPIST-1-like systems. Cap it with the
-  published Kepler M-dwarf multiplicity (Ballard & Johnson 2016; Hsu+2020's multiplicity;
-  DC15) while keeping the planet-per-star averages.
-- **A2 (B16) Rocky or envelope-bearing temperate planets, as a setting** (decided
-  2026-10-15). HM-C gives every
-  planet an initial H/He envelope, so most habitable-zone planets are 1.5–3 R⊕ and η⊕ (rocky,
-  conservative HZ) is 0.09. Published η⊕ ranges from ~0.05 to ~0.6 (Neil & Rogers 2020;
-  Bryson+2021); the data do not decide. Add a setting for the born-bare fraction outside
-  Kepler's well-measured range, default unchanged, and document both ends.
-- **A3 (B3) Metallicity dependence of small planets.** Petigura+2018: small planets at
-  P < 10 d are more common at high [Fe/H]. Apply it as a mean-one reweighting over the
-  Kepler field's [Fe/H] distribution, so Kepler averages are kept. Needed by phase 6, where
-  stars have measured [Fe/H].
-- **A4 (B5) Early-M degeneracy.** Several early-M fits score within noise. Draw
-  (d_lrc, d_mu, f_bare, P_min) per system from the near-best fits, as HM-C's posterior is
-  drawn per system.
+Done in step 2 (2026-10-15; details in `docs/ASSUMPTIONS.md` and the validation docs):
+
+- **A1 (B21) Multiplicity around K and M dwarfs** — confirmed as a tension and made a setting.
+  Against HM-C's Kepler-fitted field model, the boost raises the share of systems with two
+  transiting planets by +28% (G), +45% (K), +28% (M) (`validation.binaries`); putting less of it
+  into the cluster count loses 14–29% of planets instead. Both Kepler observables cannot be kept
+  without a re-fit; `BinaryModel(boost_cluster_share=1)` (default: planets per star) or 0
+  (multiplicity mix).
+- **A2 (B16) Temperate rocky planets** — setting `attach_planets(temperate_bare_fraction=0)`;
+  η⊕ 0.10 (default) to 0.33.
+- **A3 (B3) Metallicity** — `starsys.inner.metallicity` (Petigura+2018), on by default; three of
+  six betas within 1σ, hot sub-Neptunes and sub-Saturns shallower than measured.
+- **A4 (B5) Early-M degeneracy** — 40 equally good parameter sets drawn per host; DC15 score
+  25.5 → 17.4.
+- **A7 (B15, B22) Settings** — `SmallPlanetModel(wide_factor=1)`, `BinaryModel(cb_rate_factor=1)`.
+- **A8 (B30) Moons slow their planet's spin** — `moons.attach_moons` updates `rotation_h`.
+
+Open:
+
 - **A5 (B6, optional) XUV of M dwarfs.** Constrain `d_log_alpha_pret` with the M-dwarf radius
   valley (Van Eylen+2021; Petigura+2022; Ho & Van Eylen 2023).
 - **A6 (B28, B29, optional) Worldbuilding extras.** Small irregular moons (size
   distribution, Jewitt & Haghighipour 2007) and water lost during the runaway phase
   (Luger & Barnes 2015 escape rates).
-
-- **A7 (B15, B22) Settings for wide-orbit small planets and circumbinary planets** (decided
-  2026-10-15). Defaults stay data-based (flat beyond the snow line; Armstrong+2014); the
-  settings reach Poleski+2021's wide-orbit rate and a factor ~3 either way for circumbinary
-  planets.
-- **A8 (B30) Spin-down by moons** (decided 2026-10-15). Moonless and moon-bearing rocky planets
-  both keep their primordial ~3 h days today. Transfer spin to the generated moons by the
-  tidal migration already computed in `moons._survive` (angular-momentum conservation, as
-  the Moon lengthened Earth's day from ~5 h to 24 h). Atmospheric thermal tides (Venus) stay
-  unmodelled.
-- **A9 Temperature presentation** (decided 2026-10-15; step 4). `t_eq` is the no-greenhouse
-  equilibrium temperature (Earth 255 K, real surface 288 K). Label it as such in summaries and
-  add a rough surface-temperature estimate for rocky planets, marked as illustrative.
+- **A9 Temperature presentation** (step 4). `t_eq` is the no-greenhouse equilibrium
+  temperature (Earth 255 K, real surface 288 K). Label it as such in summaries and add a rough
+  surface-temperature estimate for rocky planets, marked as illustrative.
 
 ### B. Assumed (documented in `docs/ASSUMPTIONS.md`)
 
-B4, B10, B13 (resonant chains), B15, B17, B18, B19, B20, B22, B23, B24, B25, plus the choices
-behind closed items (B1, B2, B9, B30). B15 (wide-orbit rate) and B22 (circumbinary rate) are
-settings, with A2 (A7).
+B4, B10, B13 (resonant chains), B15, B17, B18, B19, B20, B21, B22, B23, B24, B25, plus the choices
+behind closed items (B1, B2, B3, B5, B9, B16, B30). B15, B16, B21 and B22 are user settings.
 
 B18 is the only item more data would help: Zang+2025's KMTNet sensitivity functions and
 planet table are public on Dryad (doi:10.5061/dryad.ksn02v7cg) but block scripted downloads.
@@ -113,7 +104,7 @@ Downloading `sensitivity.tar` and `table_S3.xlsx` by hand into
 
 ### Closed
 
-B1, B2, B7, B8, B9, B11, B12, B14, B26, B27, B30. Resolutions: `docs/validation/planets.md`,
+B1, B2, B3, B5, B7, B8, B9, B11, B12, B14, B16, B26, B27, B30. Resolutions: `docs/validation/planets.md`,
 `docs/validation/phase5.md`, and git history of this file (commit 46936e9 has the full
 entries).
 

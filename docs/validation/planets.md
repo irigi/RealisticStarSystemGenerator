@@ -8,7 +8,7 @@ and the extrapolation map, is [phase4_report.md](phase4_report.md)
 (`python -m starsys.validation.report`). Phase 5 (derived properties, Kozai–Lidov, moons, tidal
 decay on the giant branches) is validated in [phase5.md](phase5.md).
 
-## Phase 4 summary (2026-10-14, updated 2026-10-15 after the backlog session)
+## Phase 4 summary (2026-10-14, updated 2026-10-15 after the backlog session and step 2)
 
 All rates are intrinsic (planets per star, no detection model). Verdicts:
 - **match:** within the quoted uncertainty;
@@ -18,10 +18,11 @@ All rates are intrinsic (planets per star, no detection model). Verdicts:
 | Check | Model | Data | Verdict |
 |---|---|---|---|
 | HM-C port vs the 100 published catalogs (distributions, KS) | at the noise floor | He & Ford 2026 | match (§4.1, `hmc_port.md`) |
-| Kepler-like inner planets, whole population with binaries (mock magnitude-limited sample) | 2.36 per star at 3–300 d, every P–R cell within 1.0σ | published HM-C 2.38 ± 0.11 | match (report) |
-| Early M, 1–4 R⊕, P < 200 d | 2.59 (mock Kepler sample) | 2.5 ± 0.2 (DC15) | match (§4.2) |
-| Early M, Hsu+2020 integrated rates | 0.90; 3.78 | 0.9–1.6; 4.2–8.4 | consistent, at the Dirichlet (low) end |
-| Mid-to-late M, 0.5–4 R⊕, 0.5–7 d | 1.06 | 0.61 +0.24/−0.19 (Ment & Charbonneau 2023) | tension, 1.7σ (B4) |
+| Kepler-like inner planets, whole population with binaries (mock magnitude-limited sample) | 2.35 per star at 3–300 d | published HM-C 2.38 ± 0.11 | match (report) |
+| Metallicity dependence of small planets, six P–R classes (Petigura+2018) | β 0.59 / 0.96 / 1.52 (1–10 d), 0.15 / 0.33 / 1.22 (10–100 d) | 0.6 / 1.6 / 5.5, −0.3 / 0.5 / 2.1 | 3 of 6 within 1σ; hot sub-Neptunes and sub-Saturns shallower (2.1σ, 2.6σ), warm super-Earths steeper (2.3σ) (B3, §4.1) |
+| Early M, 1–4 R⊕, P < 200 d; DC15 grid | 2.61; score 17.4 over 33 cells (posterior drawn per host) | 2.5 ± 0.2 (DC15) | match (§4.2, B5) |
+| Early M, Hsu+2020 integrated rates | 0.86; 3.76 | 0.9–1.6; 4.2–8.4 | consistent, at the Dirichlet (low) end |
+| Mid-to-late M, 0.5–4 R⊕, 0.5–7 d | 0.97 | 0.61 +0.24/−0.19 (Ment & Charbonneau 2023) | tension, 1.4σ (B4) |
 | Ultracool dwarfs, K2 | within 1σ | Sestovic & Demory 2020 | consistent |
 | CLS fit targets (Fulton+2021, Rosenthal+2022, raw counts, multiplicity) | score 2.6 over 5 | — | match (§4.3) |
 | Giants vs [Fe/H] (Bryan & Lee 2024), Bonomo+2025, Johnson+2010 | 14.0 / 4.7 / 9.5 / 7.5% | 14.3 / 5.0 / 9.8 / 7 ± 1% | match |
@@ -31,17 +32,17 @@ All rates are intrinsic (planets per star, no detection model). Verdicts:
 | RV occurrence at P < 50 d around GK dwarfs, M sin i 10–30 / 30–100 / 100–1000 M⊕ | 8.9 / 2.1 / 1.3% | 4.8 / 3.0 / 2.6% (Howard+2010 fit, ±~60%) | consistent; 3–10 M⊕: 20% vs 9% (Howard) and 30–50% (HARPS) |
 | Direct imaging (Nielsen+2019, Bowler 2016, Vigan+2021) | within ~1σ | — | consistent; GPIES < 6.9% vs 8.7% depends on the assumed shape |
 | Microlensing mass-ratio function (Zang+2025) over the measured range | within ~6% | — | match (§4.4) |
-| Wide orbits, s = 2–6 (Poleski+2021) | 0.05 | 1.4 +0.9/−0.6 | tension (B15) |
-| η⊕, conservative HZ, 0.5–1.5 R⊕ | 0.085 | 0.37–0.60 (Bryson+2021); 0.008–0.076 (Neil & Rogers 2020) | tension with Bryson, match with photoevaporation-aware estimates (B16) |
+| Wide orbits, s = 2–6 (Poleski+2021) | 0.05 | 1.4 +0.9/−0.6 | tension (B15; setting `wide_factor`) |
+| η⊕, conservative HZ, 0.5–1.5 R⊕ | 0.10 (setting `temperate_bare_fraction` 1: 0.33) | 0.37–0.60 (Bryson+2021); 0.008–0.076 (Neil & Rogers 2020) | tension with Bryson, match with photoevaporation-aware estimates (B16; setting) |
 | Small planets 237–500 d (Hsu+2019) | 0.053 | 0.03–0.40 | consistent |
 | Planets at 0.5–2 d, FGK (Hsu+2019) | within 0.89–1.04 of each bin | — | match (calibrated; B7) |
 | USPs, F / G / K / Kepler-like early M (Sanchis-Ojeda+2014) | 0.14 / 0.58 / 0.92 / 1.21% | 0.15 / 0.51 / 0.83 / 1.10% | match (B8; all M dwarfs 2.7%, set by late M dwarfs, where TESS agrees) |
 | HM-C at 2–8 d vs Hsu+2019 | 1–4 R⊕ at 2–4 d ×1.2–1.9; sub-Earths at 4–8 d ×0.5 | — | tension (B24) |
 | Suppressed fraction of G primaries (Moe & Kratter 2021) | 21% volume-, 26% magnitude-limited | 33 ± 5%, 43 ± 7% | tension: the population has fewer close companions (B20) (§4.5) |
 | Hot Jupiters, transit-like vs RV-like samples | 0.62% / 0.80% | 0.4–0.6% / ~1% | match (not tuned) |
-| Inner multiplicity with the single-star boost | ≥ 5 planets: 0.49 → 0.68 of M-dwarf hosts | Kepler-fitted HM-C | tension (B21) |
-| Circumbinary planets, 4–6 / 6–10 / > 10 R⊕ (Armstrong+2014) | 14.6 / 7.8 / 3.7% | 14 / 10 / < 5.9% | match (calibrated; B22) |
-| Giant planets around giant stars, 89–4400 d, reweighted to Wolthoff+2022's sample (stage, mass, [Fe/H]) | 7.0% (RGB 7.1, HB 7.0) | 10.7 +2.2/−1.6% (RGB 14.2, HB 6.6) | HB match; RGB 2.6σ low (B23) (§4.6) |
+| Transit multiplicity with the single-star boost (simple detection model), vs HM-C's Kepler-fitted field model | systems with 2 / 1 transiting planets +28% (G), +45% (K), +28% (M) | unchanged expected | tension, ~3σ for G and K (B21; setting `boost_cluster_share`) |
+| Circumbinary planets, 4–6 / 6–10 / > 10 R⊕ (Armstrong+2014) | 14.6 / 7.8 / 3.7% | 14 / 10 / < 5.9% | match (calibrated; B22; setting `cb_rate_factor`) |
+| Giant planets around giant stars, 89–4400 d, reweighted to Wolthoff+2022's sample (stage, mass, [Fe/H]) | 6.0–7.0% (RGB 7.1, HB 5.4–7.0 between runs) | 10.7 +2.2/−1.6% (RGB 14.2, HB 6.6) | HB match; RGB 2.6σ low (B23) (§4.6) |
 | Giant planets with P ≤ 89 d around giant stars, Wolthoff-like sample | 1.5 expected hosts among 482 | none found | consistent (Poisson p = 0.23) |
 | White dwarfs with planets | 43% (14% at 1–10 au) | 25–50% metal-polluted (Koester+2014) | consistent |
 | Innermost white-dwarf planets (Mustill & Villaver 2012) | ~3 au (1 M☉ progenitor), ~10 au (4–8 M☉) | ~1.5 and ~10 au | consistent |
@@ -131,6 +132,38 @@ field ratio to 0.53, away from the Kepler fit, because young stars dominate ⟨1
 stellar-type-dependent XUV/bolometric ratio is not implemented; it would need a re-fit of
 α_pret to be meaningful.
 
+### Metallicity (backlog B3, 2026-10-15)
+
+HM-C is a Kepler-field average with no [Fe/H] dependence. `starsys.inner.metallicity` adds
+Petigura+2018's (California-Kepler Survey IV), centred on the Kepler field's mean [Fe/H]
+(−0.01, LAMOST): HM-C planet masses ∝ 10^[Fe/H] (a prior: core mass ∝ solid content) and the
+period power-law index tilted by −1.5 per dex (Petigura's Table 6: above the break, metal-rich
+sub-Neptunes fall off as P^−0.3, metal-poor ones rise as P^+0.1). A third term, f_swpa ∝
+10^(c [Fe/H]), was fitted to c = 0. Planets inside 3 d (`inner.short`) take Petigura's hot
+betas directly, as weights normalised over the Kepler field's [Fe/H] distribution (RMS 0.21).
+
+`python -m starsys.validation.planets --metallicity [--fit]`: FGK single stars (0.75–1.3 M☉) with
+[Fe/H] uniform over −0.4 to +0.4, occurrence ∝ 10^(β [Fe/H]) fitted in 0.1 dex bins (HM-C planets;
+the hot bin is 3–10 d here); 120,000 stars, out of sample:
+
+| P (d) | R (R⊕) | Petigura+2018 β | model β | masses only (no period tilt) |
+|---|---|---|---|---|
+| 1–10 | 1–1.7 | +0.6 ± 0.2 | +0.59 | +0.14 |
+| 1–10 | 1.7–4 | +1.6 ± 0.3 | +0.96 | +0.55 |
+| 1–10 | 4–8 | +5.5 +1.6/−1.5 | +1.52 | +1.02 |
+| 10–100 | 1–1.7 | −0.3 ± 0.2 | +0.15 | 0.00 |
+| 10–100 | 1.7–4 | +0.5 ± 0.2 | +0.33 | +0.27 |
+| 10–100 | 4–8 | +2.1 ± 0.7 | +1.22 | +1.12 |
+
+Score 18.9 over six betas (masses only: 31.9; no dependence at all: 68.6). Hot sub-Neptunes
+(2.1σ) and hot sub-Saturns (2.6σ, 7 planets) stay shallower than measured, warm super-Earths
+steeper (2.3σ): HM-C's parameters cannot make one size class at one period range steeper on
+its own.
+
+With the Kepler field's [Fe/H] distribution (mean −0.005, RMS 0.21) the planets per star are
+unchanged (2.462 at 3–300 d either way; inside 3 d within 1%); hot sub-Neptunes (3–10 d,
+1.7–4 R⊕) rise 13%, from averaging a nonlinear response.
+
 ## 4.2 M dwarfs and below (`starsys.inner.mdwarf`)
 
 Command: `python -m starsys.validation.mdwarf` (refit with `--fit`; 2026-10-13).
@@ -162,16 +195,19 @@ an option).
 Early M (0.35–0.65 M☉, median 0.47) fitted to Dressing & Charbonneau (2015) Table 4
 (revised stellar radii), four parameters phased in between 4000 and 3700 K:
 
-| parameter | value | meaning |
+| parameter | best value (posterior range) | meaning |
 |---|---|---|
-| `d_log_rate_clusters` | +1.8 | ~6× the FGK cluster rate (stability then prunes many) |
-| `d_mean_ln_mass` | +0.38 | planet masses ~1.5× larger before stripping |
-| `f_bare` | 0.26 | fraction of planets born without an H/He envelope |
-| `min_period` | 1.51 d | inner period limit (3 d for FGK) |
+| `d_log_rate_clusters` | +1.77 (1.39–2.06) | ~6× the FGK cluster rate (stability then prunes many) |
+| `d_mean_ln_mass` | +0.48 (−0.22–1.18) | planet masses ~1.6× larger before stripping |
+| `f_bare` | 0.27 (0.07–0.48) | fraction of planets born without an H/He envelope |
+| `min_period` | 1.84 d (1.67–2.13) | inner period limit (3 d for FGK; USPs below it come from `inner.short`) |
 
-The four are degenerate. Powell runs from three starts end at different points
-(e.g. +1.4/+0.6/0.30/1.4 d, +1.4/+0.2/0.24/1.1 d) whose scores are within noise
-(20–26). The data constrain the occurrence they produce, not each parameter.
+The four are degenerate: the data constrain the occurrence they produce, not each parameter.
+Since 2026-10-15 (backlog B5) they are drawn per host from `EARLY_M_POSTERIOR`: a 512-point
+Sobol scan of the box, the best 60 re-scored on two independent star samples, and the 40 sets
+within Δχ² = 4.72 (68% for four parameters) of the best kept. With the posterior drawn per host
+the score is 17.4 over 33 cells (single point before: 23.2, 25.5 after the USPs of B8). The
+mid-to-late M period limit was refitted with the new anchor (`min_period_late` 0.75 → 0.9 d).
 
 Mid-to-late M: below 0.5 M☉, planet masses scale ∝ M★ (`mass_slope` 1, a universal
 planet-to-star mass ratio, Pascucci+2018). This is a prior: slopes 0–1.5 fit Ment &
@@ -182,14 +218,14 @@ search against Ment & Charbonneau. The grid caps the bare fraction at 0.9: it pr
 
 ### Results (out of sample)
 
-Early M vs DC15: score 23.2 over 33 cells (plain HM-C: 70); 25.5 since the USPs of B8 (2026-10-15).
-Integrated:
+Early M vs DC15: score 17.4 over 33 cells with the posterior drawn per host (2026-10-15, B5;
+plain HM-C: 70; single best point before: 23.2, 25.5 with B8's USPs). Integrated:
 
 | quantity | observed | model |
 |---|---|---|
-| DC15, 1–4 R⊕, P < 200 d | 2.5 ± 0.2 | 2.63 |
+| DC15, 1–4 R⊕, P < 200 d | 2.5 ± 0.2 | 2.61 |
 | Hsu+2020, 1–2.5 R⊕, 2–32 d | 0.9 (Dirichlet) – 1.6 (uniform) | 0.86 |
-| Hsu+2020, 0.5–4 R⊕, 0.5–256 d | 4.2 (Dirichlet) – 8.4 (uniform) | 3.83 |
+| Hsu+2020, 0.5–4 R⊕, 0.5–256 d | 4.2 (Dirichlet) – 8.4 (uniform) | 3.76 |
 
 The model sits near the low (Dirichlet, the authors' baseline) end of Hsu+2020. The
 largest remaining residuals are about 2–3σ:
@@ -201,21 +237,22 @@ Mid-to-late M (0.1–0.3 M☉, median 0.18) vs Ment & Charbonneau (2023), TESS, 
 
 | P (d) | R (R⊕) | observed | model | z |
 |---|---|---|---|---|
-| 0.5–7 | 0.5–4 | 0.61 +0.24/−0.19 | 1.06 | +1.7 |
-| 0.5–7 | 0.5–1 | 0.134 +0.123/−0.072 | 0.54 | +2.1 |
-| 0.5–7 | 1–1.5 | 0.446 +0.194/−0.143 | 0.29 | −1.1 |
-| 0.5–7 | 1.5–2 | < 0.073 | 0.15 | +1.0 |
-| 0.5–7 | > 2 | < 0.072 | 0.086 | +0.3 |
-| 0.5–1 | 0.5–4 | 0.047 +0.019/−0.015 | 0.056 (0.071 with B8's USPs) | +0.5 (+1.2) |
-| 1–2.7 | 0.5–4 | 0.159 +0.064/−0.050 | 0.39 | +2.6 |
-| 2.7–7 | 0.5–4 | 0.402 +0.162/−0.127 | 0.62 | +1.3 |
+| 0.5–7 | 0.5–4 | 0.61 +0.24/−0.19 | 0.97 | +1.4 |
+| 0.5–7 | 0.5–1 | 0.134 +0.123/−0.072 | 0.48 | +2.0 |
+| 0.5–7 | 1–1.5 | 0.446 +0.194/−0.143 | 0.27 | −1.3 |
+| 0.5–7 | 1.5–2 | < 0.073 | 0.14 | +1.0 |
+| 0.5–7 | > 2 | < 0.072 | 0.080 | +0.2 |
+| 0.5–1 | 0.5–4 | 0.047 +0.019/−0.015 | 0.036 | −0.7 |
+| 1–2.7 | 0.5–4 | 0.159 +0.064/−0.050 | 0.34 | +2.3 |
+| 2.7–7 | 0.5–4 | 0.402 +0.162/−0.127 | 0.59 | +1.1 |
 
-Score 18.6 over 8 bins (20.1 with B8's USPs).
+Score 15.3 over 8 bins (18.6 before; 20.1 with B8's USPs), with the early-M posterior and
+`min_period_late` 0.9 d (2026-10-15).
 
 Known tension: the HM-C mass distribution (σ_ln M = 1.77) is too broad to produce the
 narrow 1–1.5 R⊕ peak Ment & Charbonneau see (they find a downturn below 0.9 R⊕). The
 model makes too many sub-Earths and too many planets at 1–2.7 d. Overall it has
-about 1.7× too many planets around mid-to-late M dwarfs (1.7σ). The
+about 1.6× too many planets around mid-to-late M dwarfs (1.4σ). The
 terrestrial-to-sub-Neptune ratio is about 3.5:1 (observed ~14:1).
 
 Ultracool dwarfs (Teff 2300–3000 K, median 0.10 M☉) vs Sestovic & Demory (2020), K2,
@@ -527,10 +564,31 @@ Kepler-like averages (inner HM-C planets per primary at 3–300 d, mock magnitud
 | G 5300–6000 K | 2.39 | 2.43 | 0.98 |
 | F 6000–6800 K | 1.96 | 1.94 | 1.01 |
 
-The averages are preserved, but the multiplicity mix is not. Among hosts, the share with ≥ 5
+The averages are preserved, but the multiplicity mix changes. Among hosts, the share with ≥ 5
 inner planets rises from 0.49 to 0.68 (M), 0.15 to 0.32 (K) and 0.16 to 0.22 (G), because the
-boost has to go into the cluster count where f_swpa is already 1. A consistent fix needs HM-C
-re-fitted with binaries in the forward model (backlog B21).
+boost has to go into the cluster count where f_swpa is already 1 (backlog B21).
+
+Checked against Kepler's transit multiplicities (2026-10-15, `transit_multiplicity`, 1.2 million
+systems): the inner planets of all stars, binaries included, are observed from random directions
+with a simple detection model (SNR > 7.1 from depth, CDPPs of Kepler targets of the same Teff,
+4 years). The model without the binary model is HM-C's field average, fitted to Kepler, so it
+reproduces Kepler's observables; the boosted model should keep them. It keeps the planets per
+star but not the multiplicity mix:
+
+| Share of the boost put into clusters (`boost_cluster_share`) | N2/N1 vs field model, G / K / M | planets per star vs field model, G / K / M |
+|---|---|---|
+| 1 (default) | +28% / +45% / +28% | −2% / −2% / −11% |
+| 0.5 | 0% / +36% / +17% | −8% / −14% / −20% |
+| 0 | +2% / +19% / +3% | −14% / −26% / −29% |
+
+(N3+/N1 rises by +58% / +119% / +53% with the default.) Kepler measures planets per star to
+~5% and N2/N1 to 10% (G), 13% (K) and 32% (M), so the default is the better compromise (~3σ on
+the multiplicity of G and K systems), but systems around K and M dwarfs are richer than Kepler
+sees. Both cannot be matched: where every star already has planets, extra planets per single
+star can only come as fuller systems; a consistent fix needs HM-C re-fitted with binaries in its
+forward model (won't do). `BinaryModel(boost_cluster_share=0)` is a setting for Kepler's
+multiplicity mix at the cost of fewer planets (B21, tension). Kepler's own ratios for reference:
+N2/N1 G 0.18, K 0.22, M 0.23; N3+/N1 0.08, 0.13, 0.19.
 
 | Check | Model | Observed |
 |---|---|---|

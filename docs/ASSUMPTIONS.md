@@ -6,9 +6,15 @@ alternative would change. It is the counterpart of the validation docs, which li
 tested (`docs/validation/`).
 
 Each entry carries its backlog number (`docs/NEXT_STEPS.md`) where it has one. Entries marked
-**setting** are to become user-selectable with the data-based value as default (decided
-2026-10-15; step 2, A2 and A7), because the literature spans a range that matters for
-worldbuilding.
+**setting** are user-selectable, with the data-based value as default, because the literature
+spans a range that matters for worldbuilding:
+
+| Setting | Default | Range | Effect |
+|---|---|---|---|
+| `attach_planets(temperate_bare_fraction=...)` | 0 | 0–1 | rocky η⊕ 0.10 → 0.22 (0.5) → 0.33 (1) |
+| `SmallPlanetModel(wide_factor=...)` | 1 | 1–30 | small planets at 4–10 snow-line radii of Sun-like stars: 0.3 → 1.4 (10) → 1.9 (30) per star |
+| `BinaryModel(cb_rate_factor=...)` | 1 | 1/3–3 | circumbinary planets (4–10 R⊕) per suitable binary, each bin capped at 1 |
+| `BinaryModel(boost_cluster_share=...)` | 1 | 0–1 | 1: Kepler's planets per star, fuller systems; 0: Kepler's multiplicity mix, 14–29% fewer planets |
 
 Where a planet comes from a model used outside its measured range, it carries an
 extrapolation flag (`starsys.flags`), so generated systems show where they rest on
@@ -47,14 +53,25 @@ assumptions.
   Archive RV masses are biased heavy and bound the truth from above.
 - **Every planet starts with an H/He envelope (B16).** HM-C's radius model; photoevaporation
   strips the close-in ones. Temperate small planets are therefore mostly 1.5–3 R⊕ sub-Neptunes
-  and η⊕ (rocky, conservative HZ, Sun-like stars) is 0.09. Published η⊕ ranges from ~0.05
-  (photoevaporation-aware, Neil & Rogers 2020) to ~0.6 (Bryson+2021). **Setting**
-  (A2).
+  and η⊕ (0.5–1.5 R⊕, conservative HZ, 4800–6300 K hosts) is 0.10. Published η⊕ ranges from
+  ~0.05 (photoevaporation-aware, Neil & Rogers 2020) to ~0.6 (Bryson+2021). **Setting**
+  `temperate_bare_fraction`: that fraction of small planets (< 10 M⊕ initially) receiving less
+  than 2 Earth fluxes is born without an envelope (rocky). 1 gives η⊕ 0.33, Bryson's lower-bound
+  model (0.37 +0.48/−0.21); higher values are out of reach, because heavier cores stay above
+  1.5 R⊕ even when bare.
 - **2–8 d periods (B24).** HM-C and Hsu+2019 analyse the same Kepler sample and disagree: at
   3–4 d HM-C exceeds Hsu's 2–4 d bin for 2–6 R⊕ (×1.9 at 2–4 R⊕); at 4–8 d it has half of
   Hsu's sub-Earths. We follow HM-C from 3 d and Hsu below (`inner.short`). Kepler's sub-Earth
   rates are uncertain by ~30%.
 - **Below 0.5 d.** No planets (Kepler-78 b at 8.5 h is rare).
+- **Metallicity (B3).** HM-C is a Kepler-field average. Petigura+2018's dependence (stronger
+  for larger planets and at short periods) is put into HM-C's parameters, centred on the Kepler
+  field's mean [Fe/H] (−0.01): planet masses ∝ 10^[Fe/H] (a prior: core mass ∝ solids) and the
+  period index tilted by −1.5 per dex (fitted). It reproduces 3 of Petigura's 6 betas within
+  1σ; hot sub-Neptunes (0.96 vs 1.6 ± 0.3) and hot sub-Saturns (1.5 vs 5.5 ± 1.6) stay shallower,
+  warm super-Earths steeper (0.15 vs −0.3 ± 0.2). Planets inside 3 d take Petigura's betas
+  directly. M dwarfs get the same dependence (extrapolated). Planets per star of the Kepler field
+  are unchanged; hot sub-Neptunes rise 13% (averaging a nonlinear response).
 
 ## M dwarfs
 
@@ -62,6 +79,16 @@ assumptions.
   (σ_ln M = 1.77) makes too many sub-Earths against Ment & Charbonneau 2023's narrow
   1–1.5 R⊕ peak (~2σ, 7 planets) and the total is 1.7× high. Kept: 7 planets cannot fix a
   shape; the M-dwarf calibration (DC15, Hsu+2020) is followed.
+- **Early-M parameters (B5).** The four early-M calibration parameters are degenerate: many
+  combinations fit Dressing & Charbonneau 2015 equally well. They are drawn per host from the
+  40 sets within 68% of the best fit (`inner.mdwarf.EARLY_M_POSTERIOR`), as HM-C's own posterior
+  is drawn per system: more varied M-dwarf systems, no preferred point.
+- **Fuller K and M systems (B21).** Transit surveys measure field averages over binaries, so
+  single stars get a boost; where every star already has planets (K and M dwarfs, HM-C's f_swpa
+  = 1), the boost can only add planets to systems. That keeps Kepler's planets per star but
+  raises the share of systems with two transiting planets by ~30–45% over HM-C's Kepler-fitted
+  mix (`validation.binaries`). **Setting** `BinaryModel(boost_cluster_share=...)`: 1 (default)
+  keeps planets per star; 0 keeps Kepler's multiplicity mix with 14–29% fewer planets.
 - **Below 0.1 M☉:** occurrence ∝ M^1.9 (disk mass), flagged; checked loosely against K2
   ultracool dwarfs (Sestovic & Demory 2020).
 
@@ -87,9 +114,13 @@ assumptions.
   0.1–1 M☉) is applied to all host masses at a/a_sl, with no metallicity dependence; its
   parameters are drawn independently. A joint refit needs the Dryad files (see
   `NEXT_STEPS.md`).
-- **Wide orbits (B15).** Flat in ln a beyond the snow line out to 10 a_sl: 0.04 planets per
+- **Wide orbits (B15).** Flat in ln a beyond the snow line out to 10 a_sl: 0.05 planets per
   star at s = 2–6, consistent with Zang+2025 and Suzuki+2016 near s ~ 1. Poleski+2021 (5
-  planets) find 1.4 +0.9/−0.6, 30× more. **Setting.**
+  planets) find 1.4 +0.9/−0.6, 30× more, mostly Neptune- to Jupiter-mass. **Setting**
+  `wide_factor` multiplies the small-planet (< 30 M⊕) rate beyond 4 a_sl (the end of the
+  microlensing-measured range). It does not raise the giants, so it cannot reach Poleski's
+  total: it makes outer systems richer in Neptunes and smaller planets. Above ~10, the
+  spacing rules cap the number.
 - **Orbits (B19).** Eccentricities Rayleigh σ = 0.05, inclinations σ = 1.4°, continuing HM-C's
   multis; nothing measures them. No small planets beyond 10 a_sl.
 
@@ -97,7 +128,8 @@ assumptions.
 
 - **Circumbinary planets (B22).** An empirical 4–10 R⊕ component calibrated to Armstrong+2014
   (~10 Kepler planets, rate uncertain by ~3×), placed at 1–2.5 × the stability limit. Wider
-  binaries get the same planets near their limit (extrapolation). **Setting.**
+  binaries get the same planets near their limit (extrapolation). **Setting** `cb_rate_factor`
+  (1/3–3).
 - **Suppression** by a close companion follows Moe & Kratter 2021 (0 at 1 au, 1 beyond
   200 au); planets are aligned with the companion's orbit in half the systems inside 700 au
   (Christian+2022).
@@ -121,8 +153,11 @@ assumptions.
 - **Spin (B30).** Rocky planets start with Kokubo & Genda 2010's giant-impact spins (~3 h,
   isotropic axes), gas-rich ones near the Solar System giants' periods; all are slowed by the
   stellar tide with order-of-magnitude Q and k₂ (rocky Q = 100, k₂ = 0.3; gaseous Q = 10⁵,
-  k₂ = 0.5). Spin-down by moons (planned, A8) and atmospheric thermal tides (Venus) is not
-  modelled, so rocky planets keep short days.
+  k₂ = 0.5). Moons then take angular momentum from the spin as they migrate outward
+  (`moons.attach_moons`): a Moon-like moon gives a median 13 h day (the Earth's 24 h needs the
+  Moon at 60 Earth radii; the model's tides put it near 50), heavier ones often lock day and
+  month. Atmospheric thermal tides (Venus) are not modelled, so moonless rocky planets keep
+  their primordial ~3.5 h days.
 - **Early water loss (B29).** `t_runaway_myr` is the time a planet spent inside the runaway
   greenhouse limit while its young star was brighter (MIST histories). How much water it lost
   depends on unknown initial inventories and escape efficiencies and is not computed.

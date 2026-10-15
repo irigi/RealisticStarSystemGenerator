@@ -205,19 +205,10 @@ def _kepler_multiplicity():
     return out, cdpp
 
 
-def transit_multiplicity(comp, pl, seed=0) -> pd.DataFrame:
-    """Transit multiplicity vs Kepler (backlog B21).
-
-    Inner planets (HM-C, 3-200 d, 0.5-6 Re) of every star, binaries included as in Kepler's field,
-    are observed from a random direction (transit if the impact parameter is below 1) and detected
-    if SNR = depth / CDPP_4.5h * sqrt(N_transits * T_dur / 4.5 h) > 7.1, with 4 years of data and
-    CDPPs drawn from Kepler targets of the same Teff. This is not Kepler's pipeline: for G dwarfs,
-    where HM-C is fitted to exactly these data, it gives ~1.35x Kepler's N2/N1. So the check
-    compares K and M dwarfs relative to G dwarfs (double ratios), where that bias cancels."""
+def _detected_multiplicity(comp, pl, cdpp, rng):
+    """Per TRANSIT_BINS: (detected inner planets per 1000 stars, N2/N1, its error, N3+/N1, N1)."""
     from ..units import period_to_a_au
 
-    rng = np.random.default_rng(seed)
-    obs, cdpp = _kepler_multiplicity()
     mass, rad, teff = (np.asarray(comp[k], dtype=float) for k in ("mass", "radius", "teff"))
     noise = np.full(len(mass), np.nan)
     for name, (lo, hi) in TRANSIT_BINS.items():
@@ -231,23 +222,40 @@ def transit_multiplicity(comp, pl, seed=0) -> pd.DataFrame:
     det = (np.isin(pl["model"], INNER_MODELS) & (pl["host_kind"] == "S") & (b < 1) & (snr > 7.1)
            & (pl["period"] >= TRANSIT_P[0]) & (pl["period"] <= TRANSIT_P[1])
            & (pl["planet_radius"] >= TRANSIT_R[0]) & (pl["planet_radius"] <= TRANSIT_R[1]))
-    model = {}
+    out = {}
     for name, (lo, hi) in TRANSIT_BINS.items():
         stars = (teff >= lo) & (teff < hi) & (np.asarray(comp["phase"]) == 0)
         sel = det & stars[c]
         k = np.bincount(c[sel], minlength=len(mass))
         k = k[k > 0]
         n = np.bincount(np.minimum(k, 4), minlength=5)[1:]
-        model[name] = (1000 * sel.sum() / stars.sum(), n[1] / n[0], (n[2] + n[3]) / n[0])
-    g = "G 5300-6000 K"
+        r = n[1] / n[0]
+        out[name] = (1000 * sel.sum() / stars.sum(), r, r * np.sqrt(1 / n[0] + 1 / max(n[1], 1)), (n[2] + n[3]) / n[0], n[0])
+    return out
+
+
+def transit_multiplicity(comp, on, off, seed=0) -> pd.DataFrame:
+    """Transit multiplicity with and without the binary model (backlog B21).
+
+    Inner planets (HM-C, 3-200 d, 0.5-6 Re) of every star, binaries included as in Kepler's field,
+    are observed from a random direction (transit if the impact parameter is below 1) and detected
+    if SNR = depth / CDPP_4.5h * sqrt(N_transits * T_dur / 4.5 h) > 7.1, with 4 years of data and
+    CDPPs drawn from Kepler targets of the same Teff. This is not Kepler's pipeline (for G dwarfs it
+    gives ~1.3x Kepler's N2/N1 for HM-C, which is fitted to exactly these data), so the test is the
+    ratio of the model with binaries to the field-average model without them (``off``): HM-C's fit
+    makes the latter reproduce Kepler, and the boosted model should keep the same observables.
+    Kepler DR25 candidates are listed for reference."""
+    rng = np.random.default_rng(seed)
+    obs, cdpp = _kepler_multiplicity()
+    m_on = _detected_multiplicity(comp, on, cdpp, rng)
+    m_off = _detected_multiplicity(comp, off, cdpp, rng)
     rows = []
     for name in TRANSIT_BINS:
-        o, m = obs[name], model[name]
-        err = o[1] * np.sqrt(1 / o[3] + 1 / max(o[1] * o[3], 1))  # Poisson error of N2/N1
-        rows.append({"stars": name, "Kepler N2/N1": o[1], "+-": err, "Kepler N3+/N1": o[2],
-                     "model N2/N1": m[1], "model N3+/N1": m[2],
-                     "N2/N1 rel. to G: Kepler": o[1] / obs[g][1], "model": m[1] / model[g][1],
-                     "occurrence rel. to G: Kepler": o[0] / obs[g][0], "model ": m[0] / model[g][0]})
+        o, a, b = obs[name], m_on[name], m_off[name]
+        rows.append({"stars": name, "Kepler N2/N1": o[1], "Kepler N3+/N1": o[2],
+                     "field model N2/N1": b[1], "with binaries": a[1],
+                     "ratio N2/N1": a[1] / b[1], "+-": a[1] / b[1] * np.hypot(a[2] / a[1], b[2] / b[1]),
+                     "ratio N3+/N1": a[3] / b[3], "ratio detected planets": a[0] / b[0]})
     return pd.DataFrame(rows).set_index("stars")
 
 
@@ -305,8 +313,8 @@ def main(argv=None):
     print(avg)
     print("\n== Multiplicity of inner systems (fraction of hosts), same sample ==")
     print(mult)
-    print("\n== Transit multiplicity vs Kepler DR25 (simple detection model; compare relative to G) ==")
-    print(transit_multiplicity(comp, on))
+    print("\n== Transit multiplicity with / without the binary model (simple detection model; B21) ==")
+    print(transit_multiplicity(comp, on, off))
     print("\n== Hot Jupiters: transit-like vs RV-like samples ==")
     print(hot_jupiters(systems, comp, on))
     cb = circumbinary(comp, on)

@@ -22,7 +22,7 @@ put into HM-C's own parameters, relative to the Kepler field's mean metallicity
 
 Fitted (2026-10-15, out of sample): betas 0.59 / 0.96 / 1.52 at 3-10 d and 0.15 / 0.33 / 1.22
 at 10-100 d for super-Earths / sub-Neptunes / sub-Saturns; score 18.9 over the six betas
-(no dependence: 31.9). The hot sub-Neptunes (2.1 sigma) and hot sub-Saturns (2.6 sigma, 7
+(masses only: 31.9; none: 68.6). The hot sub-Neptunes (2.1 sigma) and hot sub-Saturns (2.6 sigma, 7
 planets) stay shallower than measured, the warm super-Earths steeper (2.3 sigma).
 
 Planets inside 3 d (:mod:`starsys.inner.short`) are drawn from Kepler rates directly, so they take
