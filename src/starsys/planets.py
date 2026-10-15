@@ -219,6 +219,8 @@ def attach_planets(systems, components, seed=None, *, params: hmc.HMCParams | No
         short_weight = 1.0 - (mdwarf_weight(teff, mdwarf) if mdwarf is not None else 0.0)
         short_weight = np.where(h["kind"] == P_TYPE, 0.0, short_weight)
         usp_weight = np.where(h["kind"] == P_TYPE, 0.0, 1.0)  # USPs below every host's floor, M dwarfs included
+        if mdwarf is not None:  # below 0.1 Msun, scaled like the host fraction (disk mass)
+            usp_weight = usp_weight * np.minimum(mass / mdwarf.substellar_mass, 1.0) ** mdwarf.disk_mass_slope
         if binaries is not None:
             short_weight = short_weight * bn.boost_factor(mass, None, binaries)
             usp_weight = usp_weight * bn.boost_factor(mass, None, binaries)

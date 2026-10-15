@@ -101,7 +101,8 @@ def test_brown_dwarfs_get_few_small_planets():
     assert 0 < hosts < 0.5 * n
     assert np.median(pl["planet_radius"]) < 1.5
     assert (pl["flags"] & planets.FLAG_SUBSTELLAR).all()
-    assert set(np.unique(pl["model"])) == {"hmc_m", "outer_small"}  # no giants below 0.1 Msun
+    assert set(np.unique(pl["model"])) <= {"hmc_m", "outer_small", "short_period"}  # no giants below 0.1 Msun
+    assert np.mean(pl["model"] == "short_period") < 0.02
 
 
 def test_reproducible_and_fixed_params(population):
