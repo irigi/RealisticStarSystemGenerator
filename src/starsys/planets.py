@@ -100,6 +100,19 @@ SHORT_CLUSTER_ID = -5  # ``clusterid`` of planets inside HM-C's inner period lim
 CB_SPLIT_RADIUS = 4.0  # circumbinary HM-C planets this large are replaced by the empirical component
 GIANT_REDRAWS = 20  # inner-system redraws for hosts whose inner system is unstable next to its giants
 
+# Effective age for HM-C's envelope retention with age="star": t_eff = AGE_SCALE * 5 Gyr * (age / 5 Gyr)^AGE_SLOPE.
+# Fitted (2026-10-15) so that the super-Earth / sub-Neptune ratio (1-1.8 / 1.8-3.5 Earth radii, P < 100 d) of
+# FGK main-sequence stars equals HM-C's fixed-age value, and its young (< 1 Gyr) / old ratio for 5300-7000 K
+# stars equals Berger+2020's 0.61 +- 0.11 (model: 0.59-0.63).
+AGE_SCALE = 1.35
+AGE_SLOPE = 0.5
+
+
+def photoevaporation_age(age_gyr) -> np.ndarray:
+    """Effective age (Gyr) passed to HM-C's envelope-retention step for ``age="star"``."""
+    return AGE_SCALE * 5.0 * (np.maximum(np.asarray(age_gyr, dtype=float), 1e-3) / 5.0) ** AGE_SLOPE
+
+
 DEFAULT_MDWARF = MDwarfModel()
 DEFAULT_GIANTS = gp.GiantModel()
 DEFAULT_SMALL = sp.SmallPlanetModel()
@@ -123,7 +136,7 @@ def attach_planets(systems, components, seed=None, *, params: hmc.HMCParams | No
                    binaries: bn.BinaryModel | None = DEFAULT_BINARIES,
                    evolved: ev.EvolvedModel | None = DEFAULT_EVOLVED,
                    short: sh.ShortPeriodModel | None = DEFAULT_SHORT,
-                   derived: dv.DerivedModel | None = DEFAULT_DERIVED, age: str = "fixed",
+                   derived: dv.DerivedModel | None = DEFAULT_DERIVED, age: str = "star",
                    amd_pair_criterion: str = "hill", rv_masses: bool = True) -> dict[str, np.ndarray]:
     """Draw planets for every component of every system.
 
@@ -157,9 +170,10 @@ def attach_planets(systems, components, seed=None, *, params: hmc.HMCParams | No
         Derived properties (:class:`starsys.derived.DerivedModel`): insolation, equilibrium
         temperature, habitable zone, spin. ``None`` leaves those columns out.
     age
-        ``"fixed"``: photoevaporation uses HM-C's ``system_age`` (5 Gyr) for every star, as
-        published. ``"star"``: use each star's own age (the authors list the fixed age as
-        a limitation; this is outside what was fitted).
+        ``"star"`` (default): envelope retention uses each star's age, through the effective age
+        :func:`photoevaporation_age`, normalised so that field stars keep HM-C's Kepler-fitted
+        super-Earth / sub-Neptune ratio while young stars keep more envelopes (Berger+2020).
+        ``"fixed"``: HM-C's ``system_age`` (5 Gyr) for every star, as published.
     amd_pair_criterion
         Passed to :func:`starsys.inner.hmc.generate_catalog`.
     rv_masses
@@ -212,7 +226,7 @@ def attach_planets(systems, components, seed=None, *, params: hmc.HMCParams | No
         is_m = np.zeros(len(host), dtype=bool)
 
     colour = bp_rp_from_teff(teff) + rng.normal(0.0, 1.0, len(teff)) * kepler_bp_rp_scatter(teff)
-    star_age = h["age"] if age == "star" else None
+    star_age = photoevaporation_age(h["age"]) if age == "star" else None
     rest = np.ones(len(host))
     if binaries is not None and binaries.boost:
         rows, rest = bn.apply_boost(rows, colour, bn.boost_factor(mass, teff, binaries))

@@ -11,6 +11,12 @@ and the colour mapping reproduce the published model.
 ``--colour`` prints the Teff-binned offset between Kepler de-reddened bp-rp and the
 Mamajek dwarf sequence (the table in :mod:`starsys.stars.spectral`).
 
+``--valley`` checks the per-star age of photoevaporation (``age="star"``, the default) on
+the stellar population: the ratio of super-Earths (1-1.8 Earth radii) to sub-Neptunes
+(1.8-3.5), P < 100 d, of FGK main-sequence stars (must equal the fixed-age value, which is
+HM-C's Kepler fit), and its young (< 1 Gyr) / old ratio for 5300-7000 K stars against
+Berger+2020 (Gaia-Kepler, property-matched hosts: 0.61 +- 0.09 / 1.00 +- 0.10).
+
 Usage: ``python -m starsys.validation.planets --catalogs 1-10``
 """
 
@@ -47,7 +53,7 @@ def _run_glue(params: HMCParams, stars: pd.DataFrame, seed: int):
     }
     systems = {"age_gyr": np.full(n, params.system_age), "n_components": np.ones(n, int)}
     pl = attach_planets(systems, components, seed=seed, params=params, mdwarf=None, giants=None, small=None,
-                        binaries=None, evolved=None, short=None)
+                        binaries=None, evolved=None, short=None, age="fixed", rv_masses=False)
     df = pd.DataFrame({k: v for k, v in pl.items() if k not in ("system", "role", "model")})
     df["target"] = df.pop("component")
     return np.bincount(df["target"], minlength=n), df
@@ -80,13 +86,41 @@ def validate_catalog(cid: int, stellar: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def radius_valley_age(n_systems: int = 300_000, seed: int = 3) -> pd.DataFrame:
+    """Super-Earth / sub-Neptune ratios with fixed and per-star ages (see module docstring)."""
+    from .. import planets
+    from ..stars.population import draw_systems
+
+    systems, comp = draw_systems(n_systems, seed=seed)
+    teff, age = np.asarray(comp["teff"]), np.asarray(comp["age_gyr"])
+    ms = planets.hmc_hosts(comp) & (np.asarray(comp["phase"]) == 0)
+    fgk, fg = ms & (teff >= 3950) & (teff < 7000), ms & (teff >= 5300) & (teff < 7000)
+    rows = []
+    for mode in ("fixed", "star"):
+        pl = attach_planets(systems, comp, seed=seed + 1, age=mode, giants=None, small=None, derived=None, short=None)
+        k, r = pl["component"], pl["planet_radius"]
+        sel = (pl["host_kind"] == "S") & (pl["period"] < 100)
+
+        def ratio(m):
+            return (m & (r >= 1.0) & (r < 1.8)).sum() / (m & (r >= 1.8) & (r < 3.5)).sum()
+
+        young, old = ratio(sel & fg[k] & (age[k] < 1.0)), ratio(sel & fg[k] & (age[k] >= 1.0))
+        rows.append({"age": mode, "FGK ratio": ratio(sel & fgk[k]), "young (< 1 Gyr)": young, "old": old,
+                     "young / old": young / old, "Berger+2020 young / old": "0.61 +- 0.11"})
+    return pd.DataFrame(rows).set_index("age")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--catalogs", default="1-5")
     parser.add_argument("--colour", action="store_true", help="print the Kepler colour-offset table and exit")
+    parser.add_argument("--valley", action="store_true", help="radius valley vs age (Berger+2020) and exit")
     args = parser.parse_args()
-    stellar = load_hmc_stellar_table()
     pd.set_option("display.width", 200)
+    if args.valley:
+        print(radius_valley_age().round(3).to_string())
+        return
+    stellar = load_hmc_stellar_table()
     if args.colour:
         print(colour_offsets(stellar).round(3).to_string())
         return

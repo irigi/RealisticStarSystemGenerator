@@ -121,9 +121,11 @@ def test_per_star_age_reduces_stripping_of_young_hosts():
             "phase": np.zeros(n), "mass": np.ones(n), "radius": np.ones(n), "teff": np.full(n, 5772.0),
             "age_gyr": np.full(n, 0.5)}
     systems = {"age_gyr": np.full(n, 0.5), "n_components": np.ones(n, int)}
-    fixed = planets.attach_planets(systems, comp, seed=1, params=HMCParams(), giants=None, small=None)
-    young = planets.attach_planets(systems, comp, seed=1, params=HMCParams(), age="star", giants=None, small=None)
-    assert young["lost_envelope"].mean() < 0.5 * fixed["lost_envelope"].mean()
+    fixed = planets.attach_planets(systems, comp, seed=1, params=HMCParams(), age="fixed", giants=None, small=None)
+    young = planets.attach_planets(systems, comp, seed=1, params=HMCParams(), giants=None, small=None)  # age="star"
+    assert young["lost_envelope"].mean() < 0.85 * fixed["lost_envelope"].mean()
+    # Effective age: 1.35 * 5 Gyr * (age / 5 Gyr)^0.5 (normalised to HM-C's field average; Berger+2020 trend).
+    assert planets.photoevaporation_age(np.array([0.5, 5.0])) == pytest.approx([1.35 * 5 * 0.1**0.5, 6.75])
 
 
 def _sun_like(n, feh=0.0):
