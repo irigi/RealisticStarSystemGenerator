@@ -218,6 +218,23 @@ def test_rv_mass_rescaling():
     assert np.array_equal(a["planet_mass"][small], b["planet_mass"][small])
 
 
+def test_angles_refer_to_the_whole_system_invariable_plane():
+    systems, comp = _sun_like(5000, feh=0.3)
+    pl = planets.attach_planets(systems, comp, seed=5, params=HMCParams(), derived=None)
+    e = pl["ecc"]
+    w = pl["planet_mass"] * np.sqrt(pl["a_au"] * (1 - e * e))
+    i, node = pl["incl_invariable"], pl["asc_node_invariable"]
+    n = len(comp["mass"])
+    # In-plane components of the total angular momentum vanish for every host.
+    for comp_xy in (np.sin(i) * np.cos(node), np.sin(i) * np.sin(node)):
+        resid = np.bincount(pl["component"], weights=w * comp_xy, minlength=n)
+        assert np.abs(resid).max() < 1e-9 * np.bincount(pl["component"], weights=w, minlength=n).max()
+    # Inner planets of giant hosts are tilted to the giant-dominated plane (Masuda+2020: ~12 deg).
+    giant_host = np.isin(pl["component"], pl["component"][pl["model"] == "giant"])
+    inner = giant_host & (pl["model"] == "hmc")
+    assert np.median(np.degrees(i[inner])) > 3.0
+
+
 def test_small_planets_beyond_pmax():
     from starsys.outer.giants import pair_stable
     from starsys.outer.small import _hill_ok

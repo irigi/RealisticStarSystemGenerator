@@ -174,10 +174,13 @@ def attach_planets(systems, components, seed=None, *, params: hmc.HMCParams | No
     today), ``role``, ``model`` ("hmc", "hmc_m", "giant", "hot_jupiter", "wide_giant",
     "outer_small" or "pulsar"), ``hmc_catalog`` (posterior catalog id of the system, 0 for
     fixed params and pulsars), ``flags``, ``a_au``, and every column of
-    :data:`starsys.inner.hmc.COLUMNS`. For giants (``clusterid`` -1), small planets beyond P_max
-    (-2) and pulsar planets (-3), the angles ``incl_mut``/``incl_invariable``/
-    ``asc_node_invariable`` refer to the inner system's invariable plane (or the host's
-    reference plane without one). For giants, ``mass_init`` and ``radius_init`` equal the
+    :data:`starsys.inner.hmc.COLUMNS`. ``incl_invariable`` and ``asc_node_invariable`` refer to
+    the invariable plane of all planets of the host (for a Solar System analogue, close to the
+    giants' orbits). ``incl_mut`` is the inclination each model drew: for HM-C planets to their
+    AMD reference plane, for giants (``clusterid`` -1), small planets beyond P_max (-2),
+    circumbinary (-4) and short-period (-5) planets to the inner (HM-C) system's invariable
+    plane, or the host's reference plane without one; pulsar planets (-3) are referred to
+    their own plane. For giants, ``mass_init`` and ``radius_init`` equal the
     final values (for giants of evolved hosts, ``planet_radius`` is re-inflated by the present
     flux). Planets of evolved hosts are on their present (expanded) orbits. With ``derived``:
     ``insolation``, ``t_eq``, ``t_eq0``, ``hz``, ``t_lock_gyr``, ``spin``, ``rotation_h`` and
@@ -294,6 +297,7 @@ def attach_planets(systems, components, seed=None, *, params: hmc.HMCParams | No
         k, model, flags, a_au, host_mass, a_old = (x[keep] for x in (k, model, flags, a_au, host_mass, a_old))
         pl["period"] = a_au_to_period(a_au, host_mass)
         _reinflate_giants(k, pl, a_old, a_au, h)
+    _system_plane(k, pl, planes, a_au)
     comp = host[k]
     result = {
         "system": sys_of_host[k],
@@ -521,6 +525,39 @@ def _evolve_orbits(k, pl, a_au, h, evolved: ev.EvolvedModel):
     return np.where(old, a_au * h["mass"][k] / host_mass * shrink, a_au), host_mass, keep
 
 
+def _node_in_plane(n_orb, n_plane):
+    """Longitudes of the ascending nodes of orbits ``n_orb`` in planes ``n_plane`` (vectorised
+    :func:`starsys.inner.hmc._node_in_plane`)."""
+    t = np.where(np.abs(n_plane[:, 2:3]) < 0.9, [[0.0, 0.0, 1.0]], [[1.0, 0.0, 0.0]])
+    u = np.cross(t, n_plane)
+    u /= np.linalg.norm(u, axis=1, keepdims=True)
+    v = np.cross(n_plane, u)
+    line = np.cross(n_plane, n_orb)
+    nrm = np.linalg.norm(line, axis=1, keepdims=True)
+    line = np.where(nrm > 1e-15, line / np.maximum(nrm, 1e-300), u)
+    return np.arctan2((line * v).sum(axis=1), (line * u).sum(axis=1)) % (2 * np.pi)
+
+
+def _system_plane(k, pl, planes, a_au):
+    """Refer ``incl_invariable`` and ``asc_node_invariable`` to the invariable plane of all planets
+    of each host (in place). Until here they refer to the host's reference plane: the inner (HM-C)
+    system's invariable plane, or the plane drawn for the first model that placed planets."""
+    ok = np.isfinite(planes[k, 0])
+    if not ok.any():
+        return
+    idx = np.flatnonzero(ok)
+    kk = k[idx]
+    normals = gp.orbit_normals(planes[kk], pl["incl_invariable"][idx], pl["asc_node_invariable"][idx])
+    e = np.clip(pl["ecc"][idx], 0.0, 0.999)
+    lw = pl["planet_mass"][idx] * np.sqrt(a_au[idx] * (1.0 - e * e))  # host mass is common to a host's planets
+    total = np.zeros((len(planes), 3))
+    np.add.at(total, kk, lw[:, None] * normals)
+    nrm = np.linalg.norm(total[kk], axis=1, keepdims=True)
+    n_inv = np.where(nrm > 0, total[kk] / np.maximum(nrm, 1e-300), planes[kk])
+    pl["incl_invariable"][idx] = np.arccos(np.clip((normals * n_inv).sum(axis=1), -1.0, 1.0))
+    pl["asc_node_invariable"][idx] = _node_in_plane(normals, n_inv)
+
+
 def _add_pulsar_planets(result, systems, components, evolved: ev.EvolvedModel, rng):
     """Append the planets of neutron stars and re-sort."""
     ns = np.flatnonzero(np.asarray(components["kind"]) == "NS")
@@ -616,6 +653,8 @@ def _add_small(k, pl, planes, rows, edge, colour, ml, mass, radius, teff, star_a
     occupied = {"host": k[occ], "a_au": period_to_a_au(pl["period"][occ], mass[k[occ]]),
                 "planet_mass": pl["planet_mass"][occ], "ecc": pl["ecc"][occ],
                 "giant": np.r_[np.zeros(len(last), dtype=bool), np.ones(len(giant), dtype=bool)]}
+    missing = np.isnan(planes[:, 0])  # hosts without inner planets or giants: keep the plane drawn here
+    planes[missing] = gp._random_unit_vectors(missing.sum(), rng)
     s = sp.draw_small(mass, radius, teff, rows, edge, colour, ml, rng, small, occupied=occupied, planes=planes,
                       age=star_age, a_limits=limits)
     n = len(s["host"])
