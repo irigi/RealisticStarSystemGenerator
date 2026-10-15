@@ -31,7 +31,7 @@ unticked item.
 
 ## Items (in order)
 
-1. [ ] **Stable IDs.** `generate_one(seed)` / `generate_ids(...)`: a system depends only on its
+1. [x] **Stable IDs.** (done: `starsys.ids`, `python -m starsys --id S1-42`) `generate_one(seed)` / `generate_ids(...)`: a system depends only on its
    own seed (separate SeedSequence streams for stars, planets, moons), so the star map can draw
    the star alone and planets on click, identically. System k of a run = hash(master, k). Tests:
    same ID -> identical system regardless of batch; stars-only matches the full draw.
@@ -59,3 +59,9 @@ unticked item.
 ## Decisions
 
 (Logged during the run.)
+
+- D1 (item 1): instead of rewriting the vectorised pipeline per system, stars are drawn in
+  fixed blocks of 64 (block seed = mix(master, block)) and planets/moons of one system alone
+  from mix(master, block, j). Stars-only draws stay batched (fast for the star map), planets
+  ~5 ms per system on click. ID format `S<master>-<k>`; galaxy IDs `G<ix>.<iy>.<iz>-<j>` reuse
+  `ids.complete`.

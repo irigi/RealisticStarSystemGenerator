@@ -249,6 +249,12 @@ def _star_line(c, r, name) -> str:
     return " · ".join(p for p in parts if p)
 
 
+def system_label(bundle, i: int) -> str:
+    """The system's stable ID (``bundle.meta["ids"]``, see :mod:`starsys.ids`) or its row number."""
+    ids = bundle.meta.get("ids") or []
+    return str(ids[i]) if i < len(ids) and ids[i] else str(i)
+
+
 def system_text(bundle, i: int, moons: bool = True) -> str:
     """Readable multi-line summary of system ``i``."""
     s, c, p = bundle.systems, bundle.components, bundle.planets
@@ -259,7 +265,7 @@ def system_text(bundle, i: int, moons: bool = True) -> str:
     order = list(STAR_KINDS)
     bodies = ", ".join(f"{n} {STAR_KINDS.get(k, k)}{'s' * int(n > 1)}"
                        for k, n in sorted(zip(kinds, counts), key=lambda kn: order.index(kn[0]) if kn[0] in order else 9))
-    lines = [f"System {i} · age {_g(s['age_gyr'][i])} Gyr · [Fe/H] {feh:+.2f} · "
+    lines = [f"System {system_label(bundle, i)} · age {_g(s['age_gyr'][i])} Gyr · [Fe/H] {feh:+.2f} · "
              f"{bodies} · {len(pl)} planet{'s' * (len(pl) != 1)}"
              f" · {len(mo)} moon{'s' * (len(mo) != 1)}"]
     if "real_star" in bundle.meta:

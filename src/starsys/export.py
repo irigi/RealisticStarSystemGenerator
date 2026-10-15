@@ -150,7 +150,7 @@ def system_dict(bundle, i: int, labels=None) -> dict:
         stars.append(d)
     cb = [_planet(bundle, int(q), pn[int(q)], labels, moons_of.get(int(q), []))
           for q in pl if str(p["host_kind"][q]) == "P"]
-    return {"id": int(i), "age_gyr": _num(s["age_gyr"][i], 4), "feh": _num(s["feh"][i], 3),
+    return {"id": int(i), "system_id": ds.system_label(bundle, i), "age_gyr": _num(s["age_gyr"][i], 4), "feh": _num(s["feh"][i], 3),
             "n_stars": len(comp), "n_planets": len(pl), "n_moons": len(mo), "stars": stars,
             "circumbinary_planets": cb,
             "circumbinary_host": [cn[int(comp[0])], cn[int(comp[1])]] if cb else None}

@@ -4,6 +4,7 @@ Examples::
 
     python -m starsys -n 5 --seed 1                      # five systems, printed
     python -m starsys -n 2000 --spectral G --habitable --show 3
+    python -m starsys --id S1-42                          # one system by its stable ID
     python -m starsys -n 1000 --seed 2 --json out/systems.json --tables out/tables --format parquet
 """
 
@@ -45,6 +46,7 @@ def select(bundle, spectral: str | None = None, habitable: bool = False, min_pla
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="python -m starsys", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--id", nargs="+", help="print the systems with these stable IDs (e.g. S1-42, see starsys.ids)")
     ap.add_argument("-n", type=int, default=5, help="systems to generate (default 5)")
     ap.add_argument("--seed", type=int, default=None)
     ap.add_argument("--spectral", help="keep systems whose primary is of these classes, e.g. G or FGK")
@@ -62,6 +64,12 @@ def main(argv=None):
     args = ap.parse_args(argv)
 
     kwargs = {} if args.bare_fraction is None else {"temperate_bare_fraction": args.bare_fraction}
+    if args.id:
+        from . import ids
+        for sid in args.id:
+            print(ds.system_text(ids.system(sid, planet_kwargs=kwargs), 0, moons=not args.no_moons))
+            print()
+        return
     bundle = generate(args.n, seed=args.seed, planet_kwargs=kwargs)
     keep = select(bundle, args.spectral, args.habitable, args.min_planets, args.single)
     writing = bool(args.json or args.tables)
