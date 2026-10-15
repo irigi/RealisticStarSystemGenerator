@@ -403,6 +403,33 @@ def report_howard(n_systems: int = 200_000):
         _row(f"M sin i {lo}-{hi} Me: HM-C masses {vals[0]:.2f}, rescaled", vals[1], f"{fit(lo, hi):.1f} (fit)")
 
 
+def report_bonomo(n_systems: int = 300_000):
+    """Cold Jupiters (1-10 au, 0.5-20 MJup M sin i) around hosts of small planets (P < 100 d, 1-20 Earth masses)
+    vs all stars: single 0.6-1.2 Msun main-sequence stars. Bonomo+2025: f_CJ|SP = 11.1 +2.5/-1.8% at [Fe/H] =
+    -0.01, f_CJ = 9.8 +0.9/-0.8% at -0.07; with the 0.06 dex metallicity difference removed, the ratio is ~0.96
+    +- 0.2 (no correlation). The model's inner systems are conditioned on stability next to the giants, which
+    lowers it slightly (backlog B11)."""
+    from .. import binaries as bn
+    from ..planets import attach_planets, hmc_hosts
+    from ..stars.population import draw_systems
+
+    systems, comp = draw_systems(n_systems, seed=21)
+    m, feh = np.asarray(comp["mass"]), np.asarray(comp["feh"])
+    sun = (hmc_hosts(comp) & (np.asarray(comp["phase"]) == 0) & (m >= 0.6) & (m < 1.2)
+           & np.isnan(bn.structure(comp)["a_near"]))
+    pl = attach_planets(systems, comp, seed=22, derived=None)
+    c = pl["component"]
+    msini = pl["planet_mass"] * np.sin(pl["incl_sky"])
+    sp = (pl["period"] < 100) & (pl["planet_mass"] >= 1) & (pl["planet_mass"] <= 20)
+    cj = (pl["a_au"] >= 1) & (pl["a_au"] <= 10) & (msini >= 0.5 * MJUP_E) & (msini <= 20 * MJUP_E)
+    has_sp, has_cj = (np.bincount(c[x], minlength=len(m)) > 0 for x in (sp, cj))
+    print("\nCold Jupiters with and without inner small planets (Bonomo+2025), % of stars:")
+    for name, sel, obs in (("all", sun, "ratio ~0.96 +- 0.2"),
+                           ("1.0-1.2 Msun, [Fe/H] > 0.1", sun & (m >= 1.0) & (feh > 0.1), "ratio > 1 at < 3 sigma")):
+        a, b = has_cj[sel].mean(), has_cj[sel & has_sp].mean()
+        _row(f"{name}: f_CJ {100 * a:.1f}, f_CJ|SP {100 * b:.1f}; ratio", b / a, obs)
+
+
 def report_population(n_systems: int = 100_000):
     """Giants attached to the stellar population, and their effect on the inner (HM-C) systems."""
     from ..planets import attach_planets, hmc_hosts
@@ -446,6 +473,7 @@ def main() -> None:
     report_radii()
     report_hmc_overlap(model)
     report_howard()
+    report_bonomo()
     report_population()
 
 
