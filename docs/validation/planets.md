@@ -302,13 +302,14 @@ fitted to give the CLS values afterwards: mean 0.23 vs 0.238, median 0.19 vs 0.1
 
 | Target | Model | Observed | z |
 |---|---|---|---|
-| 2–8 au, 30–6000 M⊕, per 100 stars (Fulton+2021) | 11.6 | 14.1 +2.0/−1.8 | −1.4 |
-| 8–32 au (Fulton+2021) | 9.6 | 8.9 +3.0/−2.4 | +0.2 |
-| % of stars with a giant at 0.23–10 au (Rosenthal+2022) | 18.6 | 17.6 +2.4/−1.9 | +0.4 |
-| 0.1–5 au, 300–6000 M⊕, per 100 stars (raw CLS count, 58; near complete) | 8.8 | 8.1 ± 1.1 | +0.7 |
-| % of detectable giant hosts with ≥ 2 giants (CLS 18/89) | 20.9 | 20.2 ± 4.3 | +0.2 |
+| 2–8 au, 30–6000 M⊕, per 100 stars (Fulton+2021) | 11.8 | 14.1 +2.0/−1.8 | −1.3 |
+| 8–32 au (Fulton+2021) | 9.2 | 8.9 +3.0/−2.4 | +0.1 |
+| % of stars with a giant at 0.23–10 au (Rosenthal+2022) | 18.8 | 17.6 +2.4/−1.9 | +0.5 |
+| 0.1–5 au, 300–6000 M⊕, per 100 stars (raw CLS count, 58; near complete) | 8.9 | 8.1 ± 1.1 | +0.8 |
+| % of detectable giant hosts with ≥ 2 giants (CLS 18/89) | 21.0 | 20.2 ± 4.3 | +0.2 |
 
-Score 2.6 over 5 targets. Plain Poisson numbers score 5.6, mostly from too few
+Score 2.6 over 5 targets (2026-10-15, with the intermediate-mass period distribution and
+correlated masses; not refitted). Plain Poisson numbers score 5.6, mostly from too few
 multi-giant systems.
 
 ### Checks (not fitted)
