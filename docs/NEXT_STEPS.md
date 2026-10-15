@@ -1,9 +1,10 @@
 # Next steps (as of 2026-10-15)
 
-Status: phases 1–5 of `DESIGN.md` are built and validated (stars, planets of every
-population, derived properties, moons). Phases 1–4 are merged into `main`; phase 5 and the
-backlog session are on branch `phase5`. How each part was built and checked:
-`DESIGN.md` §3, `docs/validation/` (`planets.md` for phase 4, `phase5.md` for phase 5).
+Status: phases 1–6 of `DESIGN.md` are built and validated (stars, planets of every
+population, derived properties, moons, systems around real stars). Phases 1–4 are merged into
+`main`; phase 5 and the backlog session are on branch `phase5`, phase 6 on `phase6` (branched
+from `phase5`). How each part was built and checked: `DESIGN.md` §3, `docs/validation/`
+(`planets.md` for phase 4, `phase5.md` for phase 5, `phase6.md` for phase 6).
 
 The model is close to the limit of what the published data can test. Remaining questions that
 no available data or paper settles are written down as assumptions in `docs/ASSUMPTIONS.md`,
@@ -15,49 +16,41 @@ not kept as open tasks.
    assumptions (`docs/ASSUMPTIONS.md`) and things we won't do; repository cleaned up.
 2. **Worldbuilding-relevant fixes** — done (2026-10-15): A1–A4, A7, A8 below. A5–A6 left
    open (optional).
-3. **Phase 6, real-star conditioning** (`DESIGN.md` §3.5): systems around named stars,
-   conditioned on their known planets and on survey sensitivity. In progress; plan below.
+3. **Phase 6, real-star conditioning** — done (2026-10-15; `DESIGN.md` §3.5,
+   `docs/validation/phase6.md`): systems around named stars, conditioned on their known
+   planets and on survey sensitivity.
 4. **Usability:** readable per-system summaries and export formats, including A9.
 
-Phase 7 (learned emulators) only if profiling in phase 6 shows it pays off.
+Phase 7 (learned emulators): not needed so far. Conditioning takes 5–35 s per star, almost all
+of it in drawing prior systems; the importance sampling itself reaches ESS 200 even for
+8-planet systems.
 
-## Phase 6 plan (real-star conditioning, branch `phase6`)
+## Phase 6 (done, branch `phase6`)
 
-Goal: `python -m starsys.real "Barnard's Star"` returns systems that are drawn from the model,
-contain the star's known planets, and are consistent with the surveys that did not find more.
-Code in a new package `src/starsys/real/`. Each step ends with a commit, tests and a validation
-note (`docs/validation/phase6.md`).
+**Handoff (2026-10-15, session paused).** Step 3 (surveys) and step 4 (validation) are coded
+and committed as work in progress; what is left:
+1. Rerun `pytest -q` (expect ~84 tests) and fix anything red (last full run: before the
+   direct-imaging survey, the hot-star RV error and the placeholder companions).
+2. Run `python -m starsys.validation.real --injection 100` and `--holdout 30 --no-gaia`
+   (5–15 min each) and write `docs/validation/phase6.md`: summary table (stellar benchmarks
+   with pulls, injection calibration per period/mass bin, hold-out posterior/prior ratio,
+   runtime 5–35 s per star), plus the known limits from `docs/ASSUMPTIONS.md` "Real stars".
+   First results (40 injected stars): predicted unseen planets match the truth in all 8 bins
+   within ~1.5σ; stellar benchmarks within 1σ except Vega age (2.5σ, fast rotator) and
+   Procyon B (IFMR); Sirius B was wrong with a contaminated Gaia white-dwarf solution, now
+   guarded (re-check: expect ~0.2 Gyr, ~26,000 K).
+3. Quick checks still to do: `python -m starsys.real "bet Pic"` after the hot-star RV
+   change; `Kepler-444` companions are now stellar (≥ 0.08 M☉).
+4. Commit "Phase 6.3/6.4", update memory `project-state.md`, then step 4 of the plan
+   (usability, A9).
 
-1. **The star** (`real/catalog.py`, `real/star.py`). Lookup by any common name (HD, HIP, GJ,
-   TIC, Gaia, proper and Bayer names) in the 20-pc census (Kirkpatrick+2024; components and
-   hierarchy) and the NASA Exoplanet Archive hosts; Gaia DR3 online (cached) as a fallback.
-   Measured Teff, radius or luminosity, mass, log g, [Fe/H] and age with their errors give a
-   posterior over (initial mass, age, [Fe/H]) by importance sampling the population prior
-   through `evolve` (MIST, remnants, substellar). Known companions come from the census with
-   their initial masses; separations from the components' positions, else drawn from the
-   population model below the resolution limit. Output: `systems, components` for N
-   realisations, so that `attach_planets` and `attach_moons` run unchanged.
-   *Done (2026-10-15):* adds the Bright Star Catalogue, PASTEL and the WDS
-   (`python -m starsys.real.fetch`); giants are fitted on the MIST isochrone nodes; a second,
-   adapted round of draws where the first gives fewer than 300 effective samples.
-2. **Known planets and conditioning** (`real/known.py`, `real/condition.py`). Known planets from
-   the NASA archive. Prior systems are drawn for the star and weighted by how well they contain
-   the known planets (kernels in log P and log R or log M sin i), times the probability that
-   each of their other planets was missed. Transiting planets are matched by re-orienting the
-   system so that the planet transits (weighted by the transit probability), so co-transiting
-   neighbours come out right. Matched planets are snapped to the measured values. Known planets
-   the prior cannot make are inserted with a penalty; the effective sample size is reported.
-3. **Survey sensitivity** (`real/surveys.py`), per method:
-   - transit: TESS sectors (tess-point) with a noise model by Tmag; Kepler DR25 for Kepler
-     targets;
-   - RV: the star's own archival time series where it exists (HARPS RVBank, HIRES Butler+2017,
-     CARMENES DR1) with an expected-Delta-chi^2 detection test; otherwise a monitoring
-     probability by magnitude and spectral type from those surveys' target lists;
-   - astrometry: Gaia DR3 RUWE (no excess = no detectable wobble over ~3 yr);
-   - imaging: coarse contrast limits, off unless the star is a known imaging target.
-4. **Validation and report**: self-consistency on simulated stars (posterior coverage of
-   unseen planets), benchmark stars (the Sun seen from 10 pc, alpha Cen A/B, Proxima,
-   Barnard's Star, TRAPPIST-1, eps Eri, Vega, Sirius), runtime.
+`python -m starsys.real NAME` (package `src/starsys/real/`): star lookup and fit (`catalog`,
+`star`), known planets (`known`), survey sensitivity (`surveys`), conditioning (`condition`).
+New catalogues: `python -m starsys.real.fetch` (BSC, PASTEL, WDS) and the RV archives in
+`catalogs/observational/rv/` (raw CDS files of J/A+A/636/A74, J/AJ/153/208, J/A+A/670/A139).
+Online and cached in `data/real/`: Gaia DR3 and Gentile Fusillo+2021 white dwarfs.
+Validation and known limits: `docs/validation/phase6.md`; assumptions: `docs/ASSUMPTIONS.md`
+("Real stars").
 
 ## Resuming
 
@@ -77,6 +70,8 @@ python -m starsys.validation.evolved                                # giant star
 python -m starsys.validation.short                                  # planets inside 3 d vs Hsu+2019, Sanchis-Ojeda+2014
 python -m starsys.validation.derived                                # insolation, HZ, spin, Kozai-Lidov
 python -m starsys.validation.moons                                  # moons vs Solar System, Teachey+2018
+python -m starsys.real "Barnard's Star" -n 100                       # systems around a real star
+python -m starsys.validation.real --injection 100 --holdout 30      # real stars: benchmarks, self-consistency, hold-out
 python -m starsys.validation.report                                 # phase 4 report (writes docs)
 python -m starsys.validation.report5                                # phase 5 report (writes docs)
 ```

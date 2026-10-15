@@ -22,10 +22,15 @@ def test_geometry_round_trip():
 
 def test_tempering():
     rng = np.random.default_rng(1)
-    chi2 = rng.uniform(0, 60, 5000)
-    lam, w, ess = cd.tempering(chi2, np.zeros(5000), 500.0)
-    assert lam > 1 and ess >= 499 and w.sum() == pytest.approx(1)
-    assert cd.tempering(np.zeros(100), np.zeros(100), 50.0)[0] == 1.0
+    chi2 = rng.uniform(0, 30, 5000)
+    none = np.zeros(5000, dtype=int)
+    lam, mu, w, ess = cd.tempering(chi2, np.zeros(5000), none, 25.0, 2000.0)  # ESS 670 at lambda = 1
+    assert 1 < lam < 2.5 and mu == 1 and ess >= 1999 and w.sum() == pytest.approx(1)
+    assert cd.tempering(np.zeros(100), np.zeros(100), np.zeros(100, int), 25.0, 50.0)[:2] == (1.0, 1.0)
+    # Insertions only matter once the kernels are at their widest.
+    n_ins = rng.integers(0, 4, 5000)
+    lam, mu, w, ess = cd.tempering(np.zeros(5000), np.zeros(5000), n_ins, 25.0, 2000.0)
+    assert lam == 1.0 and mu > 1 and ess >= 1999
 
 
 def test_known_planets_rv():

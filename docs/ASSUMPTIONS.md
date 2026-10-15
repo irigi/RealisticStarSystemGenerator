@@ -178,3 +178,41 @@ Quadrupole, test-particle cycles from stellar companions, quenched by GR and by 
 planets' precession. Galactic-tide driving of very wide binaries (Kaib+2013) is not
 modelled. Planets driven into the star are removed rather than turned into hot Jupiters,
 because hot-Jupiter rates are already calibrated.
+
+## Real stars (phase 6, `starsys.real`)
+
+- **The star is the model's star.** A real star is represented by the generator's own stellar
+  models at the posterior (age, [Fe/H], initial masses), not by the catalogue values, so that
+  planets, habitable zones and evolution stay consistent. Error floors of 2% (Teff), 5%
+  (luminosity), 4% (radius), 3% (mass), 0.1 dex (log g) and 0.05 dex ([Fe/H]) stand for the
+  models' systematics. Known consequences: MIST M dwarfs come out ~3–5% hotter than measured
+  (Barnard's Star 3360 K vs 3195 K); fast rotators look older (Vega 0.56 vs 0.455 Gyr);
+  white dwarfs follow the IFMR without scatter, so a white dwarf whose progenitor does not fit
+  the system's age comes out wrong where no temperature is measured (Procyon B ~19,000 K vs
+  7,740 K).
+- **Multiplicity.** Within 20 pc the census is taken as complete for stellar companions.
+  Beyond, a star is single unless the NASA archive (`sy_snum`) or the Bright Star Catalogue
+  lists companions, whose masses and orbits are then drawn from the population model. Census
+  hierarchies are mapped onto the generator's chain; 2+2 systems (Castor) become chains, with
+  a flag. Companion orbits come from the projected separation (WDS or census positions) with
+  a random phase, eccentricity and inclination; orbits from the visual-binary catalogue (ORB6)
+  would fix them but are not on VizieR.
+- **Matching known planets.** Kernels of 0.08 dex in period and radius and 0.15 dex in mass
+  (`ConditionModel`) decide which model planet plays a known one; its values are then
+  replaced by the measured ones, and model planets closer than 2√3 mutual Hill radii are
+  removed. Known planets the model has no counterpart for are inserted at a penalty equal to a
+  5σ mismatch, i.e. the prior probability that the model cannot make them is taken as ~4e-6.
+  Where 80,000 prior systems give fewer than 200 effective samples, kernels are widened (up to
+  ×2.5) and then the insertion penalty softened (up to ×4); both factors are reported.
+  Controversial planets are left out unless asked for (`include_controversial`).
+- **Survey coverage is a lower bound.** Only RV data public in VizieR are used (HARPS RVBank to
+  2018, HIRES to 2014, CARMENES DR1 epochs at a nominal 2 m/s); ESPRESSO and later data are not.
+  Stars without archival RVs are monitored with a probability calibrated on the 20-pc census,
+  with a generic survey. TESS noise follows a simple photon, background and floor budget;
+  Kepler uses the DR25 detection efficiency; Gaia only where RUWE < 1.4; direct imaging only
+  for imaged systems, with one typical contrast curve. Microlensing and ground-based transit
+  surveys are not modelled; `TransitCampaign` adds any campaign by hand. Each survey's
+  sensitivity is a deterministic expectation (no per-star noise realisation).
+- **Settings:** `condition(surveys=None)` conditions on the known planets only (prior
+  everywhere else); `surveys=[...]` replaces the default set; `known=[...]` replaces the
+  archive's planets (e.g. to add a candidate or drop one).

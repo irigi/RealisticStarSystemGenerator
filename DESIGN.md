@@ -175,24 +175,36 @@ dwarf sequence with a Kepler-calibrated offset and scatter; validated on Kepler 
   - tidal heating of moons held eccentric in 2:1 chains (Io-like);
   - Kepler exomoon non-detections (Teachey+2018) as an upper-limit check.
 
-### 3.5 Conditioning on a real star
+### 3.5 Conditioning on a real star (built in phase 6; `starsys.real`)
 
-1. **Star lookup:** SIMBAD/Gaia DR3/TIC → mass, radius, Teff, age, [Fe/H],
-   multiplicity, distance.
-2. **Known planets:** NASA Exoplanet Archive (local copy, refreshable).
-3. **Survey coverage and sensitivity, per method:**
-   - Transit: TESS sectors observed (tess-point) + noise model by Tmag → SNR →
-     detection probability; Kepler/K2 if targeted (DR25 completeness).
-   - RV: public RV time series where available (HARPS RVBank, HIRES/Butler+2017,
-     CARMENES DR1) → injection–recovery; otherwise a prior P(monitored |
-     V mag, distance, spectral type) built from those surveys' target lists.
-   - Astrometry: Gaia DR3 RUWE / non-single-star solutions (DR4 when released).
-   - Imaging: archive of direct-imaging survey targets and contrast curves (coarse).
-4. **Inference:** P(system | star, known planets, non-detections) by importance
-   sampling from the prior simulator. Known planets are matched with kernels in
-   (P, M sin i or R); unseen planets are weighted by (1 − p_det). For systems with
-   several known planets, MCMC over latent cluster structure, plus a LightGBM-
-   amortised proposal.
+`python -m starsys.real NAME` or `starsys.real.condition.condition(NAME)`.
+
+1. **Star lookup** (`real.catalog`), offline first: the 20-pc census (Kirkpatrick+2024: system
+   hierarchy, initial masses), the NASA Exoplanet Archive (hosts, adopted stellar parameters),
+   PASTEL (literature Teff, log g, [Fe/H]), the Bright Star Catalogue (names, V) and the WDS
+   (separations the census does not resolve); Gaia DR3 online and cached (GSP-Phot/FLAME
+   parameters; white dwarfs from Gentile Fusillo+2021). SIMBAD is not used (not reachable).
+2. **The star in the model** (`real.star`): posterior over the system's age and [Fe/H] and each
+   component's initial mass, by importance sampling the population prior through the
+   generator's own stellar evolution; masses integrated on a log grid plus the MIST isochrone
+   nodes for evolved stars. Companion orbits deprojected from the projected separation.
+3. **Known planets** (`real.known`): NASA archive, true masses, minimum masses and measured
+   radii kept apart from mass–radius estimates.
+4. **Survey sensitivity** (`real.surveys`): the star's archival RVs (HARPS RVBank, HIRES
+   Butler+2017; CARMENES DR1 epochs) with an expected-Δχ² test, or a monitoring probability
+   calibrated on the 20-pc census; TESS sectors (tess-point) with a noise budget; Kepler DR25
+   detection efficiency for Kepler hosts; Gaia DR3 RUWE; direct imaging with ATMO 2020
+   hot-start magnitudes and a typical deep contrast curve, for imaged systems.
+5. **Inference** (`real.condition`): importance sampling of prior systems. Known planets are
+   matched with kernels in (P or a, R, M or M sin i at the system's orientation) by the best
+   assignment; transiting ones by viewing each system from within the matched planet's transit
+   band (exact, since the orientation is free); unmatched known planets are inserted at a 5σ
+   penalty; every other planet is weighted by (1 − p_det). Kernels are widened (and then the
+   insertion penalty softened) only as far as needed for an effective sample size of 200. The
+   chosen systems take the measured values; derived properties and moons are recomputed.
+   The planned MCMC over cluster structure and a learned proposal were not needed: the
+   view trick and the tempering keep systems with up to 8 known planets at ESS 200 from
+   80,000 prior draws.
 
 ## 4. Phases
 
@@ -203,7 +215,7 @@ dwarf sequence with a Kepler-calibrated offset and scatter; validated on Kepler 
 5. **Moons** and derived planet properties (T_eq, insolation, tidal locking,
    habitable-zone flags), plus Kozai–Lidov cycles and tidal decay around giant stars (done
    2026-10-15).
-6. **Real-star conditioning** + survey-sensitivity models.
+6. **Real-star conditioning** + survey-sensitivity models (done 2026-10-15).
 7. **Learned components** (amortised conditioning, detection emulators) — added
    where profiling shows they pay off.
 

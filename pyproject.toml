@@ -16,7 +16,7 @@ dependencies = [
 
 [project.optional-dependencies]
 ml = ["scikit-learn>=1.5", "lightgbm>=4.3"]
-astro = ["astropy>=6.1", "astroquery>=0.4.7"]
+astro = ["astropy>=6.1", "astroquery>=0.4.7", "tess-point>=0.9"]
 dev = ["pytest>=8.0", "matplotlib>=3.9", "gdown>=5.2"]
 
 [tool.setuptools.packages.find]

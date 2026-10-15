@@ -16,7 +16,8 @@ Sources, in order of precedence for each measured quantity:
 - **Washington Double Star Catalog** (Mason et al. 2001, VizieR B/wds): the latest measured
   separation of pairs whose components the census does not resolve.
 - **Gaia DR3** (online, optional, cached in ``data/real/gaia``): GSP-Phot and FLAME parameters
-  for stars with no other measurement.
+  for stars with no other measurement, and white-dwarf Teff, log g and mass from Gentile Fusillo
+  et al. (2021).
 
 Where Teff is not measured it is taken from the spectral type or the BP-RP colour along the
 Mamajek dwarf sequence (dwarfs only), and the luminosity from the absolute G or V magnitude with
@@ -421,9 +422,15 @@ def kind_from_spectral_type(sptype: str) -> str:
 
 # --- Gaia DR3 (online, cached) -------------------------------------------------------------
 
+def _source_id(value) -> str:
+    """The Gaia source id in "Gaia EDR3 123...", "Gaia DR3 123..." or "123..." ("" if none)."""
+    m = re.findall(r"\d{6,}", str(value))
+    return m[-1] if m else ""
+
+
 def gaia_dr3(source_id: str) -> dict | None:
     """GSP-Phot and FLAME parameters plus astrometry of a Gaia DR3 source (cached JSON)."""
-    sid = re.sub(r"\D", "", str(source_id))
+    sid = _source_id(source_id)
     if not sid:
         return None
     path = GAIA_CACHE / f"{sid}.json"
@@ -447,6 +454,46 @@ def gaia_dr3(source_id: str) -> dict | None:
     GAIA_CACHE.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(rec))
     return rec
+
+
+def gaia_white_dwarf(source_id: str) -> dict | None:
+    """Gentile Fusillo et al. (2021) Gaia EDR3 white-dwarf parameters (VizieR J/MNRAS/508/3877;
+    online, cached JSON)."""
+    sid = _source_id(source_id)
+    if not sid:
+        return None
+    path = GAIA_CACHE / f"wd_{sid}.json"
+    if path.exists():
+        rec = json.loads(path.read_text())
+        return rec or None
+    try:
+        from astroquery.vizier import Vizier
+        cols = ["TeffH", "e_TeffH", "loggH", "e_loggH", "MassH", "e_MassH", "TeffHe", "e_TeffHe", "loggHe",
+                "e_loggHe", "MassHe", "e_MassHe", "Pwd"]
+        r = Vizier(columns=cols, row_limit=1).query_constraints(catalog="J/MNRAS/508/3877/maincat", GaiaEDR3=sid)
+    except Exception:
+        return None
+    rec = {}
+    if len(r) and len(r[0]):
+        t = r[0]
+        rec = {c: (None if np.ma.is_masked(t[c][0]) else float(t[c][0])) for c in t.colnames if c in cols}
+    GAIA_CACHE.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(rec))
+    return rec or None
+
+
+def white_dwarf_measurements(rec: dict, sptype: str) -> dict[str, Measurement]:
+    """Teff, log g and (photometric) mass for the hydrogen or helium atmosphere solution, by spectral
+    type (DA: hydrogen; DB, DC, DQ, DZ: helium)."""
+    atm = "He" if re.match(r"^D[BCQZ]", sptype or "") else "H"
+    out = {}
+    for name, col, floor in (("teff", "Teff", 0.02), ("log_g", "logg", 0.0), ("mass", "Mass", 0.02)):
+        v, e = rec.get(col + atm), rec.get("e_" + col + atm)
+        if v is None:
+            continue
+        err = max(float(e) if e is not None else 0.0, floor * abs(v), 0.05 if name == "log_g" else 0.0)
+        out[name] = Measurement(float(v), err, "Gaia WD (GF21)")
+    return out
 
 
 def gaia_measurements(rec: dict) -> dict[str, Measurement]:
@@ -519,7 +566,7 @@ def _component_from_census(row: pd.Series) -> ComponentRecord:
     c.kind_hint = kind_from_spectral_type(c.spectral_type)
     if c.kind_hint == "star" and pd.notna(row.get("IMass")) and row["IMass"] == -999:
         c.kind_hint = "BD"
-    for band, col in (("G", "Gmag"), ("BP", "BPmag"), ("RP", "RPmag"), ("J", "Jmag"), ("Ks", "Ksmag")):
+    for band, col in (("G", "Gmag"), ("BP", "BPmag"), ("RP", "RPmag"), ("J", "Jmag"), ("H", "Hmag"), ("Ks", "Ksmag")):
         if pd.notna(row.get(col)):
             c.photometry[band] = float(row[col])
     c.measurements = census_measurements(row)
@@ -555,7 +602,8 @@ def _add_external(c: ComponentRecord, use_gaia: bool):
                 model_based = ("census (M_", "census (T", "census (s")  # census masses from relations
                 if q not in c.measurements or c.measurements[q].source.startswith(model_based):
                     c.measurements[q] = m
-            for band, col in (("V", "sy_vmag"), ("G", "sy_gaiamag"), ("T", "sy_tmag")):
+            for band, col in (("V", "sy_vmag"), ("G", "sy_gaiamag"), ("T", "sy_tmag"), ("Kp", "sy_kepmag"),
+                              ("H", "sy_hmag"), ("Ks", "sy_kmag")):
                 if pd.notna(row.get(col)) and band not in c.photometry:
                     c.photometry[band] = float(row[col])
             if not np.isfinite(c.distance_pc) and pd.notna(row.get("sy_dist")):
@@ -579,6 +627,17 @@ def _add_external(c: ComponentRecord, use_gaia: bool):
                 c.ra, c.dec = _sexa(b["RAJ2000"], 15.0), _sexa(b["DEJ2000"], 1.0)
             break
     _merge(c.measurements, pastel_measurements(keys))
+    if use_gaia and c.kind_hint == "WD" and "teff" not in c.measurements:
+        gid = next((v for k, v in c.ids.items() if k in ("Gaia", "gaia_dr3_id")), None)
+        rec = gaia_white_dwarf(gid) if gid else None
+        wd = white_dwarf_measurements(rec, c.spectral_type) if rec else {}
+        dyn = c.measurements.get("mass")
+        # Photometric solutions next to a bright star (Sirius B) are contaminated: keep them only if
+        # they are likely white dwarfs and agree with a dynamical mass where there is one.
+        if wd and (rec.get("Pwd") or 0) > 0.75 and not (
+                dyn is not None and "mass" in wd and abs(wd["mass"].value - dyn.value) > 3 * np.hypot(
+                    wd["mass"].err, dyn.err) + 0.05):
+            _merge(c.measurements, wd)
     if use_gaia and ("teff" not in c.measurements or "feh" not in c.measurements):
         gid = next((v for k, v in c.ids.items() if k in ("Gaia", "gaia_dr3_id")), None)
         rec = gaia_dr3(gid) if gid else None
@@ -700,6 +759,16 @@ def _position_separation(c0: ComponentRecord, c1: ComponentRecord) -> float:
     return sep if sep > 0.05 else np.nan
 
 
+def _with_unknown_companions(rec: SystemRecord) -> SystemRecord:
+    """Placeholders for companions a catalogue reports without parameters (beyond 20 pc: the NASA
+    archive's ``sy_snum``); their masses and orbits come from the population model."""
+    for k in range(len(rec.components), rec.n_stars_reported):
+        rec.components.append(ComponentRecord(name=f"{rec.components[0].name} companion {k}", kind_hint="star",
+                                               distance_pc=rec.components[0].distance_pc))
+        rec.separations[k] = (np.nan, "unknown")
+    return rec
+
+
 def find(name: str, use_gaia: bool = True) -> SystemRecord:
     """Look up ``name`` (any common identifier). Raises ``KeyError`` if no catalogue has it."""
     k = names.key(name)
@@ -754,7 +823,8 @@ def find(name: str, use_gaia: bool = True) -> SystemRecord:
             c.kind_hint = kind_from_spectral_type(c.spectral_type)
             _add_external(c, use_gaia)
             n_star = int(row["sy_snum"]) if pd.notna(row["sy_snum"]) else 1
-            return SystemRecord(name=name, components=[c], target=0, source="nasa", n_stars_reported=n_star)
+            return _with_unknown_companions(
+                SystemRecord(name=name, components=[c], target=0, source="nasa", n_stars_reported=n_star))
         if cand in bi:
             b = bsc().iloc[bi[cand]]
             c = ComponentRecord(name=name, ids={"HD": f"HD {int(b['HD'])}" if pd.notna(b["HD"]) else ""},
@@ -762,7 +832,8 @@ def find(name: str, use_gaia: bool = True) -> SystemRecord:
             c.kind_hint = kind_from_spectral_type(c.spectral_type)
             _add_external(c, use_gaia)
             n_star = 2 if isinstance(b["Multiple"], str) and b["Multiple"].strip() else 1
-            return SystemRecord(name=name, components=[c], target=0, source="bsc", n_stars_reported=n_star)
+            return _with_unknown_companions(
+                SystemRecord(name=name, components=[c], target=0, source="bsc", n_stars_reported=n_star))
     if k.startswith("gaia") and use_gaia:
         rec = gaia_dr3(k[4:])
         if rec:

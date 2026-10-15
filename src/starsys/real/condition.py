@@ -25,7 +25,10 @@ star's posterior realisations (:mod:`starsys.real.star`). Importance sampling:
      :mod:`starsys.real.surveys`; none by default).
 3. Each batch is resampled in proportion to its weights; batches are combined in proportion to
    their total weight. Batches are added until the effective sample size reaches
-   ``target_ess`` or ``max_prior`` systems were drawn.
+   ``target_ess`` or ``max_prior`` systems were drawn. If the effective sample size is still
+   short, the matched planets' kernels are widened by the smallest factor that reaches it (at
+   most 2.5; an ABC-style tolerance, reported as ``kernel_widening``), and then, for systems with
+   many known planets, the insertion penalty is softened (``insertion_softening``, at most 4).
 4. In the chosen systems the matched planets take the measured values (period, radius, mass, or
    M sin i / sin i at the system's orientation; eccentricity where measured), inserted ones are
    placed in the system's plane, and unmatched model planets closer than ``hill_spacing``
@@ -90,7 +93,9 @@ class ConditionedSystems:
     n_prior: int
     inserted_fraction: dict[str, float] = field(default_factory=dict)
     kernel_widening: float = 1.0  # lambda of :func:`tempering`
+    insertion_softening: float = 1.0  # mu of :func:`tempering`
     n_unique: int = 0  # distinct prior systems among the output
+    surveys: list[str] = field(default_factory=list)
 
     def summary(self) -> str:
         n = len(self.target)
@@ -98,7 +103,11 @@ class ConditionedSystems:
         on = pl["component"] == self.target[pl["system"]]
         lines = [f"{self.record.name}: {n} systems conditioned on {len(self.known)} known planet(s); "
                  f"{self.n_prior} prior systems, effective sample size {self.ess:.0f}, "
-                 f"{self.n_unique} distinct, kernels widened x{self.kernel_widening:.2f}"]
+                 f"{self.n_unique} distinct, kernels widened x{self.kernel_widening:.2f}"
+                 + (f", insertion penalty softened x{self.insertion_softening:.2f}" if self.insertion_softening > 1
+                    else "")]
+        for sv in self.surveys:
+            lines.append(f"  survey {sv}")
         for k in self.known:
             lines.append(f"  known {k.name} ({k.method}): inserted in {self.inserted_fraction.get(k.name, 0):.0%}")
         n_on = np.bincount(pl["system"][on], minlength=n)
@@ -225,7 +234,8 @@ def _weigh_batch(pl, components, target, known, ka, surveys, model: ConditionMod
     n_sys = len(target)
     n_known = len(known)
     logw = np.zeros(n_sys)  # geometry and non-detections
-    chi2 = np.zeros(n_sys)  # kernels and insertion penalties
+    chi2 = np.zeros(n_sys)  # kernels of the matched known planets
+    n_ins = np.zeros(n_sys, dtype=int)  # inserted known planets
     choices: list[_Choice] = [None] * n_sys  # type: ignore[list-item]
     comp_mass = np.asarray(components["mass"], dtype=float)
     comp_rad = np.asarray(components["radius"], dtype=float)
@@ -266,6 +276,7 @@ def _weigh_batch(pl, components, target, known, ka, surveys, model: ConditionMod
         if n_known and np.any(ka_s[~ka["cb"]] > a_max[s] * (1 + 1e-9)):
             logw[s] = -np.inf
             chi2[s] = np.inf
+            n_ins[s] = n_known
             choices[s] = _Choice(col, None)
             continue
         # Transiting known planets (orientation-free kernels).
@@ -274,7 +285,7 @@ def _weigh_batch(pl, components, target, known, ka, surveys, model: ConditionMod
             cc, val = _assign(c2, model.insert_chi2)
             col[t_idx] = np.where(cc >= 0, cc + a, -1)
             t_val = dict(zip(t_idx, val))
-            chi2[s] += val.sum()
+            chi2[s] += val[cc >= 0].sum()
         view = None
         mt = [r for r in col[t_idx] if r >= 0]
         if mt:
@@ -293,7 +304,7 @@ def _weigh_batch(pl, components, target, known, ka, surveys, model: ConditionMod
                 for r in bad:  # cannot transit together with the others: treated as inserted
                     kk = np.flatnonzero(col == r)[0]
                     col[kk] = -1
-                    chi2[s] += model.insert_chi2 - t_val[kk]
+                    chi2[s] -= t_val[kk]
             else:
                 frac = 1.0
                 v = views[0]
@@ -317,8 +328,9 @@ def _weigh_batch(pl, components, target, known, ka, surveys, model: ConditionMod
             c2 = _chi2(ka, o_idx, logp[free], loga[free], logr[free], logm[free], sin_i, cb[free], model)
             cc, val = _assign(c2, model.insert_chi2)
             col[o_idx] = np.where(cc >= 0, free[np.maximum(cc, 0)] if len(free) else -1, -1)
-            chi2[s] += val.sum()
+            chi2[s] += val[cc >= 0].sum()
         matched[col[col >= 0]] = True
+        n_ins[s] = (col < 0).sum()
         logw[s] = lw
         choices[s] = _Choice(col, view)
 
@@ -327,6 +339,7 @@ def _weigh_batch(pl, components, target, known, ka, surveys, model: ConditionMod
         cand = {key: pl[key][rows] for key in ("period", "a_au", "planet_mass", "planet_radius", "ecc", "host_mass")}
         cand["cos_i"] = new_cos
         cand["r_star"] = comp_rad[pl["component"][rows]]
+        cand["age_gyr"] = np.asarray(components["age_gyr"], dtype=float)[pl["component"][rows]]
         cand["system"] = sys_of
         p_det = np.zeros(len(rows))
         for sv in surveys:
@@ -338,34 +351,44 @@ def _weigh_batch(pl, components, target, known, ka, surveys, model: ConditionMod
     for s in range(n_sys):
         c = choices[s].col
         choices[s].col = np.where(c >= 0, rows[np.maximum(c, 0)], -1)
-    return logw, chi2, choices
+    return logw, chi2, n_ins, choices
 
 
-def tempering(chi2, logw, target_ess, max_lambda=10.0) -> tuple[float, np.ndarray, float]:
-    """Smallest kernel widening lambda >= 1 (kernels exp(-chi^2 / 2 lambda^2)) at which the effective
-    sample size reaches ``target_ess`` (or ``max_lambda``). Returns (lambda, normalised weights, ESS)."""
-    def weights(lam):
-        lw = logw - 0.5 * chi2 / lam**2
+def tempering(chi2, logw, n_ins, insert_chi2, target_ess, max_lambda=2.5, max_mu=4.0):
+    """Weights exp(logw - chi2 / 2 lambda^2 - n_ins insert_chi2 / 2 mu^2), with the smallest widening
+    that gives an effective sample size of ``target_ess``: first the matched planets' kernels
+    (lambda up to ``max_lambda``), then, if that is not enough (systems with many known planets),
+    the insertion penalty too (mu up to ``max_mu``). Widening the kernels alone does not favour
+    inserted planets over natural matches. Returns (lambda, mu, normalised weights, ESS)."""
+    def weights(lam, mu):
+        lw = logw - 0.5 * chi2 / lam**2 - 0.5 * insert_chi2 * n_ins / mu**2
         lw = np.where(np.isfinite(lw), lw, -np.inf)
         w = np.exp(lw - lw.max())
         w /= w.sum()
         return w, 1.0 / np.sum(w**2)
 
-    w, ess = weights(1.0)
-    if ess >= target_ess:
-        return 1.0, w, ess
-    lo, hi = 1.0, max_lambda
-    w_hi, ess_hi = weights(hi)
-    if ess_hi < target_ess:
-        return hi, w_hi, ess_hi
-    for _ in range(25):
-        mid = np.sqrt(lo * hi)
-        if weights(mid)[1] >= target_ess:
-            hi = mid
-        else:
-            lo = mid
-    w, ess = weights(hi)
-    return hi, w, ess
+    def search(f, lo, hi):
+        """Smallest x in [lo, hi] with ESS(f(x)) >= target (hi if none)."""
+        e_lo = weights(*f(lo))[1]
+        if e_lo >= target_ess:
+            return lo
+        e_hi = weights(*f(hi))[1]
+        if e_hi < target_ess:
+            return hi if e_hi > 1.01 * e_lo else lo  # widen only where it helps
+        for _ in range(25):
+            mid = np.sqrt(lo * hi)
+            if weights(*f(mid))[1] >= target_ess:
+                hi = mid
+            else:
+                lo = mid
+        return hi
+
+    lam = search(lambda x: (x, 1.0), 1.0, max_lambda)
+    mu = 1.0
+    if weights(lam, 1.0)[1] < target_ess:
+        mu = search(lambda x: (lam, x), 1.0, max_mu)
+    w, ess = weights(lam, mu)
+    return lam, mu, w, ess
 
 
 def _ess(logw) -> float:
@@ -519,7 +542,8 @@ def _inserted(p, k: KnownPlanet, host_mass, target_row, plane, rng) -> dict:
     r = k.radius if np.isfinite(k.radius) else (k.radius_mr if np.isfinite(k.radius_mr) else _radius_from_mass(m))
     vals = {
         "system": p["system"][0] if len(p["system"]) else 0, "component": target_row, "host_kind": "S",
-        "host_mass": host_mass, "role": 0, "model": "known", "hmc_catalog": 0, "flags": FLAG_KNOWN | FLAG_KNOWN_INSERTED,
+        "host_mass": host_mass, "role": 0, "model": "known", "hmc_catalog": 0,
+        "flags": FLAG_KNOWN | FLAG_KNOWN_INSERTED,
         "a_au": a, "period": period, "planet_mass": m, "planet_radius": r, "clusterid": KNOWN_CLUSTER_ID,
         "ecc": k.ecc if np.isfinite(k.ecc) else 0.0, "omega": 2 * np.pi * rng.random(), "incl_mut": 0.0,
         "incl_invariable": 0.0, "asc_node_invariable": 0.0, "incl_sky": incl_sky, "node_sky": node_sky,
@@ -553,12 +577,13 @@ def _refresh_invariable(p):
 
 # --- driver -------------------------------------------------------------------------------
 
-def condition(target, n: int = 100, seed=None, known: list[KnownPlanet] | None = None, surveys=None,
+def condition(target, n: int = 100, seed=None, known: list[KnownPlanet] | None = None, surveys="auto",
               model: ConditionModel = ConditionModel(), star_model: st.StarFitModel = st.StarFitModel(),
               planet_kwargs: dict | None = None, use_gaia: bool = True,
               include_controversial: bool = False, moons: bool = True) -> ConditionedSystems:
     """``n`` planetary systems of a real star (name, :class:`SystemRecord` or :class:`StarSystemFit`),
-    conditioned on its known planets (default: the NASA archive's) and ``surveys``."""
+    conditioned on its known planets (default: the NASA archive's) and ``surveys`` (``"auto"``:
+    :func:`starsys.real.surveys.default_surveys`; ``None``: none; or a list of survey objects)."""
     rng = np.random.default_rng(seed)
     if isinstance(target, str):
         target = find(target, use_gaia=use_gaia)
@@ -571,12 +596,16 @@ def condition(target, n: int = 100, seed=None, known: list[KnownPlanet] | None =
         known = known_planets(record.star.nasa_host, include_controversial)
     ka = _known_arrays(known, model)
     planet_kwargs = dict(planet_kwargs or {})
-    if surveys and callable(getattr(surveys, "prepare", None)):
+    if isinstance(surveys, str) and surveys == "auto":
+        from .surveys import default_surveys
+        surveys = default_surveys(record, known)
+    elif surveys is not None and callable(getattr(surveys, "p_detect", None)):
         surveys = [surveys]
+    surveys = list(surveys or [])
 
     n_total = len(fit.target)
     batches = []  # (systems, components, target, planets, choices)
-    all_chi2, all_logw = [], []
+    all_chi2, all_logw, all_ins = [], [], []
     drawn = 0
     order = rng.permutation(n_total)
     while drawn < min(model.max_prior, n_total):
@@ -584,20 +613,23 @@ def condition(target, n: int = 100, seed=None, known: list[KnownPlanet] | None =
         drawn += len(idx)
         systems, components, tgt = _subset_stars(fit, idx)
         pl = pt.attach_planets(systems, components, seed=rng, **planet_kwargs)
-        for sv in surveys or []:
-            sv.prepare(record, systems, components, tgt)
-        logw, chi2, choices = _weigh_batch(pl, components, tgt, known, ka, surveys, model, rng)
+        for sv in surveys:
+            sv.prepare(record, systems, components, tgt, known, rng)
+        logw, chi2, n_ins, choices = _weigh_batch(pl, components, tgt, known, ka, surveys, model, rng)
         batches.append((systems, components, tgt, pl, choices))
         all_chi2.append(chi2)
         all_logw.append(logw)
-        lw = np.concatenate(all_logw) - 0.5 * np.concatenate(all_chi2)
+        all_ins.append(n_ins)
+        lw = (np.concatenate(all_logw) - 0.5 * np.concatenate(all_chi2)
+              - 0.5 * model.insert_chi2 * np.concatenate(all_ins))
         if np.isfinite(lw).any() and _ess(lw) >= model.target_ess:
             break
     chi2 = np.concatenate(all_chi2)
     logw = np.concatenate(all_logw)
+    n_ins = np.concatenate(all_ins)
     if not np.isfinite(logw - 0.5 * chi2).any():
         raise ValueError(f"no prior system of {record.name} is compatible with its known planets")
-    lam, w, ess = tempering(chi2, logw, model.target_ess)
+    lam, mu, w, ess = tempering(chi2, logw, n_ins, model.insert_chi2, model.target_ess)
     sizes = np.array([len(b[2]) for b in batches])
     offsets = np.concatenate([[0], np.cumsum(sizes)])
     picks = rng.choice(len(w), size=n, p=w)
@@ -638,7 +670,8 @@ def condition(target, n: int = 100, seed=None, known: list[KnownPlanet] | None =
     return ConditionedSystems(record=record, known=known, systems=systems, components=components, planets=planets,
                               moons=moon_table, target=np.array(out_tgt), ess=ess, n_prior=drawn,
                               inserted_fraction={k.name: inserted[j] / n for j, k in enumerate(known)},
-                              kernel_widening=lam, n_unique=len(np.unique(picks)))
+                              kernel_widening=lam, insertion_softening=mu, n_unique=len(np.unique(picks)),
+                              surveys=[sv.describe() for sv in surveys])
 
 
 __all__ = ["ConditionModel", "ConditionedSystems", "condition", "FLAG_KNOWN", "FLAG_KNOWN_INSERTED", "replace"]

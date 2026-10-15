@@ -186,7 +186,7 @@ def _mass_guess(comp: ComponentRecord) -> tuple[float, float, float]:
             return m.value, max(0.01, m.value / f), min(hi, 20.0) if m.value < 15 else hi
     if comp.kind_hint == "BD":
         return 0.05, 0.01, 0.12
-    return 1.0, 0.07, 15.0
+    return 1.0, 0.08, 15.0  # "star": above the hydrogen-burning limit
 
 
 # --- the fit ----------------------------------------------------------------------------
@@ -527,8 +527,9 @@ def _build(record: SystemRecord, age, feh, masses, rng, population: pop.Populati
         dist = comps[k].distance_pc if np.isfinite(comps[k].distance_pc) else comps[0].distance_pc
         if np.isfinite(sep) and np.isfinite(dist):
             ak, ek, ik, ok = _deproject(np.full(n, sep * dist), mtot, rng, population)
-        else:  # unresolved: population separations below the resolution limit
-            amax = RESOLUTION_ARCSEC * dist if np.isfinite(dist) else 4e4
+        else:  # unresolved: population separations below the resolution limit; unknown: any
+            unknown = record.separations.get(k, (np.nan, ""))[1] == "unknown"
+            amax = RESOLUTION_ARCSEC * dist if np.isfinite(dist) and not unknown else 4e4
             ak = np.full(n, np.nan)
             todo = np.arange(n)
             for _ in range(200):
