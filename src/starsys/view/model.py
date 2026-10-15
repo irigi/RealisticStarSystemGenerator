@@ -10,6 +10,7 @@ generator get a mean anomaly from the body's art seed (decorative, but fixed).
 from __future__ import annotations
 
 import math
+import re
 import zlib
 from dataclasses import dataclass, field
 
@@ -83,6 +84,12 @@ def build(d: dict) -> SystemModel:
     def add(b: Body, host: str | None = None):
         b.seed = _seed(sid, b.name)
         b.short = b.name[len(host) + 1:] if host and b.name.startswith(host + " ") else b.name
+        if host and b.short == b.name:
+            # catalogue spellings of the host differ ("Proxima Cen b" around "Proxima Centauri"):
+            # keep the planet letter (and moon numeral)
+            m = re.search(r"\s([a-z](?:\s[IVXLC]+)?)$", b.name)
+            if m:
+                b.short = m.group(1)
         bodies[b.name] = b
         if b.parent is not None and b.parent in bodies:
             bodies[b.parent].children.append(b.name)

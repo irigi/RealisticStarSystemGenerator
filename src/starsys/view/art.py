@@ -243,7 +243,9 @@ def _giant(n, rng, p, t_eq, rot_h, mass):
     elif t_eq < 800:    # III: cloudless, Rayleigh-scattering blue
         stops = [(0, "#1d3a7a"), (0.5, "#3a6ab8"), (1, "#7ea8e0")]
     elif t_eq < 1400:   # IV: alkali absorption, dark
-        stops = [(0, "#1a1a2a"), (0.5, "#3a3550"), (1, "#5e5a78")]
+        stops = [[(0, "#1a1a2a"), (0.5, "#3a3550"), (1, "#5e5a78")],
+                 [(0, "#141c30"), (0.5, "#28385a"), (1, "#4a5a80")],
+                 [(0, "#2a2020"), (0.5, "#4a3a38"), (1, "#6e5a50")]][rng.choice(3)]
     else:               # V: silicate clouds, hot and glowing
         stops = [(0, "#3a1208"), (0.5, "#8a3a1a"), (1, "#d88a4a")]
     stops = [(t, _shift(_hex(c), rng, 0.03, 0.05)) for t, c in stops]
@@ -270,15 +272,32 @@ def _giant(n, rng, p, t_eq, rot_h, mass):
 
 
 def _ice_giant(n, rng, p, t_eq):
-    if t_eq > 500:  # warm sub-Neptunes: hazy, photochemical
-        base = _shift(_hex("#b8a888"), rng, 0.06, 0.08)
-        hi = _shift(_hex("#e0d8c0"), rng)
+    """Ice giants and sub-Neptunes: methane-blue when cold (Uranus/Neptune), photochemical
+    hazes when warm; faint zonal bands, bright methane-ice cloud streaks, dark spots."""
+    if t_eq > 500:  # warm sub-Neptunes: hazy (tholin-like or sulphur hazes)
+        base = _shift(_hex(rng.choice(["#b8a888", "#a8a8a0", "#c0a070", "#a0a888", "#b89878"])), rng, 0.05, 0.08)
+        hi = np.clip(base * 1.15 + 0.08, 0, 1)
+        band_amp = 0.15 + 0.2 * rng.random()
     else:
-        base = _shift(_hex(rng.choice(["#3a78c8", "#5ab0d0", "#4a90c0", "#6ac0c8"])), rng, 0.04, 0.08)
+        base = _shift(_hex(rng.choice(["#3a78c8", "#5ab0d0", "#4a90c0", "#6ac0c8", "#2c5aa8", "#7ac8c0"])),
+                      rng, 0.04, 0.08)
         hi = np.clip(base * 1.25 + 0.1, 0, 1)
-    lat = p[1] + 0.05 * n.fbm(tuple(3 * q for q in p), 4)
-    v = 0.5 + 0.5 * np.sin(lat * (5 + 4 * rng.random()) + rng.random() * 6) * (0.25 + 0.2 * rng.random())
+        band_amp = 0.2 + 0.35 * rng.random()
+    lat = p[1] + 0.05 * n.fbm(tuple(3 * q for q in p), 4) + 0.02 * n.fbm((p[0] * 4, p[1] * 25, p[2] * 4), 3)
+    nb = 4 + 6 * rng.random()
+    v = 0.5 + 0.5 * np.sin(lat * nb + rng.random() * 6) * band_amp
     rgb = base * (1 - v[..., None]) + hi * v[..., None]
+    # polar haze/brightening (Uranus' polar cap) or darkening
+    pole = np.clip(np.abs(p[1]) - 0.6, 0, 1) * 2.5 * (rng.random() - 0.3)
+    rgb = np.clip(rgb * (1 + 0.35 * pole[..., None]), 0, 1)
+    if t_eq <= 500:
+        # bright methane-ice cloud streaks along latitude lines
+        k = rng.integers(0, 6)
+        for _ in range(k):
+            lat0 = rng.uniform(-0.7, 0.7)
+            streak = np.exp(-((p[1] - lat0) / (0.015 + 0.02 * rng.random())) ** 2)
+            streak *= np.clip(n.fbm((p[0] * 3 + lat0 * 10, p[1], p[2] * 3), 3) * 2 + 0.2, 0, 1)
+            rgb = rgb * (1 - 0.8 * streak[..., None]) + 0.8 * streak[..., None]
     if rng.random() < 0.4:  # a dark spot (Neptune)
         lat0, lon0 = rng.uniform(-0.5, 0.3), rng.uniform(0, 6.28)
         cx, cz = math.cos(lon0), math.sin(lon0)

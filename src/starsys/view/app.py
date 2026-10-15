@@ -295,6 +295,12 @@ class SystemWindow(QMainWindow):
         self.info.setHtml(info.body_html(self.model, b))
         self.map.select(name)
         self.orbits.selected = name
+        # follow the selected body's host in the orbit view
+        host = b.parent if b.cat in ("planet", "moon") else None
+        if host and self.orbits.follow != host and b.cat == "planet":
+            self.orbits.focus(host)
+        elif b.cat == "moon" and self.orbits.follow != b.parent:
+            self.orbits.focus(b.parent)
         self.orbits.update()
         it = self._items.get(name)
         if it is not None:
