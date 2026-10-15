@@ -15,6 +15,10 @@ def test_rates_and_teff_trend():
     s = sh.teff_scale(np.array([3500.0, 4500.0, 5500.0, 6500.0]))
     assert np.all(np.diff(s) < 0)  # USPs are more common around cooler stars
     assert s[3] == pytest.approx(0.15 / sh.SO2014_KEPLER_MEAN)
+    # M dwarfs: USPs only, below the M-dwarf extension's period floor.
+    early, late = sh.expected_number(np.array([1.51, 0.75]), np.array([3600.0, 3100.0]), weight=0.0, usp_weight=1.0)
+    full = sh.SHORT_RATES[0].sum() * 1.10 / sh.SO2014_KEPLER_MEAN
+    assert early == pytest.approx(full) and late == pytest.approx(full * np.log(1.5) / np.log(2.0))
 
 
 def _sun_like(n):

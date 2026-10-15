@@ -18,7 +18,8 @@ merged into one planet table keyed by (system, component):
   (``model`` = "hmc_m").
 - **Planets inside HM-C's inner limit** (:mod:`starsys.inner.short`), 0.5 d to P_min
   (3 d for FGK stars; ``model`` = "short_period"): Hsu+2019's Kepler occurrence and
-  Sanchis-Ojeda+2014's ultra-short-period trend with stellar type, phased out for M dwarfs.
+  Sanchis-Ojeda+2014's ultra-short-period trend with stellar type; for M dwarfs only the
+  ultra-short periods (0.5-1 d) below the M-dwarf extension's period floor.
 - **Giant planets** (:mod:`starsys.outer.giants`), M >= 30 Earth masses: warm and cold
   giants from the California Legacy Survey to 30 au (``model`` = "giant"), hot Jupiters
   ("hot_jupiter") and wide giants from direct imaging to 100 au ("wide_giant"), scaled
@@ -217,8 +218,10 @@ def attach_planets(systems, components, seed=None, *, params: hmc.HMCParams | No
     if short is not None:
         short_weight = 1.0 - (mdwarf_weight(teff, mdwarf) if mdwarf is not None else 0.0)
         short_weight = np.where(h["kind"] == P_TYPE, 0.0, short_weight)
+        usp_weight = np.where(h["kind"] == P_TYPE, 0.0, 1.0)  # USPs below every host's floor, M dwarfs included
         if binaries is not None:
             short_weight = short_weight * bn.boost_factor(mass, None, binaries)
+            usp_weight = usp_weight * bn.boost_factor(mass, None, binaries)
 
     def inner(idx):
         """HM-C systems for hosts ``idx`` (positions in ``host``): (host position per planet, planets, planes)."""
@@ -243,7 +246,7 @@ def attach_planets(systems, components, seed=None, *, params: hmc.HMCParams | No
             nrm = gp.orbit_normals(h["plane"][kk[sel]], p["incl_invariable"][sel], p["asc_node_invariable"][sel])
             p["incl_sky"][sel] = np.arccos(np.clip(nrm[:, 2], -1.0, 1.0))
         if short is not None:
-            kk, p = _short_period(kk, p, idx, planes, h, rows, short_weight[idx], limits, short, rng)
+            kk, p = _short_period(kk, p, idx, planes, h, rows, (short_weight[idx], usp_weight[idx]), limits, short, rng)
         if binaries is not None and binaries.circumbinary:
             kk, p = _circumbinary(kk, p, idx, h, rows, binaries, rng)
         return kk, p, planes
@@ -313,8 +316,10 @@ def attach_planets(systems, components, seed=None, *, params: hmc.HMCParams | No
 
 def _short_period(kk, p, idx, planes, h, rows, weight, limits, short: sh.ShortPeriodModel, rng):
     """Add planets between 0.5 d and each host's HM-C P_min for hosts ``idx`` (``planes``:
-    their reference planes, filled in place where missing). Returns the merged, sorted planets."""
-    c = sh.draw_short(h["mass"][idx], h["radius"][idx], h["teff"][idx], rows[idx, hmc.I_PMIN], weight, rng, short)
+    their reference planes, filled in place where missing; ``weight``: per-host multipliers at
+    1-3 d and at 0.5-1 d). Returns the merged, sorted planets."""
+    c = sh.draw_short(h["mass"][idx], h["radius"][idx], h["teff"][idx], rows[idx, hmc.I_PMIN], weight[0], rng, short,
+                      usp_weight=weight[1])
     if limits is not None and len(c["host"]):
         hh = idx[c["host"]]
         a = period_to_a_au(c["period"], h["mass"][hh])

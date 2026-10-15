@@ -16,8 +16,11 @@ component fills 0.5 d to the host's HM-C period limit:
   targets (0.511), so the Kepler-sample average stays Hsu's. The 1-3 d rates are the FGK
   average.
 - **M dwarfs:** the M-dwarf extension of HM-C already reaches 0.75-1.5 d and was fitted to
-  DC15 and Ment+2023 including their shortest periods, so this component is phased out with
-  the extension's weight (zero below 3700 K).
+  DC15 and Ment+2023 including their shortest periods, so at 1-3 d this component is phased
+  out with the extension's weight (zero below 3700 K). The USP bin (0.5-1 d) is kept for all
+  hosts, still only below each host's period floor: early M dwarfs (floor 1.5 d) would
+  otherwise have no USPs (Sanchis-Ojeda+2014: 1.10 +- 0.40% of Kepler's M dwarfs, mostly
+  early M), and late M dwarfs (floor 0.75 d) get 0.5-0.75 d only.
 - **Masses:** rocky below 1.6 Earth radii (Chen & Kipping 2017 Terran, R = M^0.279; most
   USPs are bare rocky cores), Neptunian above (R = 0.808 M^0.589); envelopes counted as lost
   below 1.6 Earth radii.
@@ -89,7 +92,7 @@ def mass_from_radius(r) -> np.ndarray:
     return np.where(r < 1.6, r ** (1.0 / 0.279), (r / 0.808) ** (1.0 / 0.589))
 
 
-def expected_number(p_max, teff, weight=1.0) -> np.ndarray:
+def expected_number(p_max, teff, weight=1.0, usp_weight=None) -> np.ndarray:
     """Expected short-period planets per star between 0.5 d and ``p_max`` (per host)."""
     p_max = np.asarray(p_max, dtype=float)
     tot = SHORT_RATES.sum(axis=1)
@@ -97,14 +100,16 @@ def expected_number(p_max, teff, weight=1.0) -> np.ndarray:
     frac = np.clip((np.log(np.maximum(p_max, 1e-9))[:, None] - np.log(lo)) / np.log(hi / lo), 0.0, 1.0)
     per_bin = frac * tot
     per_bin[:, 0] *= teff_scale(teff)
-    return per_bin.sum(axis=1) * weight
+    usp = weight if usp_weight is None else usp_weight
+    return per_bin[:, 0] * usp + per_bin[:, 1:].sum(axis=1) * weight
 
 
-def draw_short(mstar, rstar, teff, p_max, weight, rng, model: ShortPeriodModel = ShortPeriodModel()):
+def draw_short(mstar, rstar, teff, p_max, weight, rng, model: ShortPeriodModel = ShortPeriodModel(), usp_weight=None):
     """Candidates (unplaced): per-planet ``host``, ``period``, ``planet_radius``, ``planet_mass``.
 
     ``p_max``: per-host upper period (the host's HM-C P_min); ``weight``: per-host multiplier
-    (1 - M-dwarf weight, times the single-star boost)."""
+    at 1-3 d (1 - M-dwarf weight, times the single-star boost); ``usp_weight``: the same for
+    the 0.5-1 d bin (default ``weight``)."""
     mstar = np.asarray(mstar, dtype=float)
     n = len(mstar)
     lo, hi = HSU2019_P_EDGES[:-1], HSU2019_P_EDGES[1:]
@@ -113,7 +118,8 @@ def draw_short(mstar, rstar, teff, p_max, weight, rng, model: ShortPeriodModel =
     for b in range(len(lo)):
         top = np.minimum(p_max, hi[b])
         frac = np.clip(np.log(np.maximum(top, 1e-9) / lo[b]) / math.log(hi[b] / lo[b]), 0.0, 1.0)
-        lam = frac * SHORT_RATES[b].sum() * np.asarray(weight, dtype=float)
+        w = weight if b or usp_weight is None else usp_weight
+        lam = frac * SHORT_RATES[b].sum() * np.asarray(w, dtype=float)
         if b == 0:
             lam = lam * teff_scale(teff)
         h = np.repeat(np.arange(n), rng.poisson(lam))

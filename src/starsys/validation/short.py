@@ -87,6 +87,10 @@ def usp_by_type(comp, pl) -> pd.DataFrame:
         sel = ms & (teff >= lo) & (teff < hi)
         rows.append({"hosts": name, "stars": int(sel.sum()), "model %": 100 * has[sel].mean(),
                      "Sanchis-Ojeda+2014 %": obs})
+    # Kepler's M dwarfs are mostly early M (Dressing & Charbonneau 2015: median 0.5 Msun).
+    sel = ms & (teff >= 3100) & (teff < 4100) & (np.asarray(comp["mass"]) >= 0.35)
+    rows.append({"hosts": "M, early (>= 0.35 Msun, Kepler-like)", "stars": int(sel.sum()),
+                 "model %": 100 * has[sel].mean(), "Sanchis-Ojeda+2014 %": SO2014["M (3100-4100 K)"][2]})
     return pd.DataFrame(rows).set_index("hosts")
 
 
