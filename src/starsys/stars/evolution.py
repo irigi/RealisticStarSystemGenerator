@@ -18,7 +18,7 @@ HBL = 0.075
 TEFF_SUN = 5772.0
 
 
-def evolve(initial_mass, age_gyr, feh, rng=None):
+def evolve(initial_mass, age_gyr, feh, rng=None, with_spectral_type=True):
     """Return a dict of arrays describing each object today.
 
     Keys: kind ('BD', 'star', 'WD', 'NS', 'BH'), mass, teff, luminosity, radius,
@@ -81,10 +81,17 @@ def evolve(initial_mass, age_gyr, feh, rng=None):
     log_g[miss] = 4.438 + np.log10(mass[miss]) - 2.0 * log_r[miss]
 
     teff = 10**log_teff
-    sptype = spectral.spectral_type(kind, teff, phase, log_g, log_l, h_atm)
-    return {
+    out = {
         "kind": kind, "initial_mass": mi, "mass": mass, "age_gyr": age, "feh": feh,
         "teff": teff, "luminosity": 10**log_l, "radius": 10**log_r, "log_g": log_g,
-        "phase": phase, "spectral_type": sptype, "hydrogen_atmosphere": h_atm,
-        "cooling_age_gyr": t_cool,
+        "phase": phase, "hydrogen_atmosphere": h_atm, "cooling_age_gyr": t_cool,
     }
+    if with_spectral_type:
+        out["spectral_type"] = spectral_type_of(out)
+    return out
+
+
+def spectral_type_of(state) -> np.ndarray:
+    """Spectral types of the objects in a state dict returned by :func:`evolve`."""
+    return spectral.spectral_type(state["kind"], state["teff"], state["phase"], state["log_g"],
+                                  np.log10(state["luminosity"]), state["hydrogen_atmosphere"])

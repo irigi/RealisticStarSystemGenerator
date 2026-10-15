@@ -16,10 +16,48 @@ not kept as open tasks.
 2. **Worldbuilding-relevant fixes** — done (2026-10-15): A1–A4, A7, A8 below. A5–A6 left
    open (optional).
 3. **Phase 6, real-star conditioning** (`DESIGN.md` §3.5): systems around named stars,
-   conditioned on their known planets and on survey sensitivity.
+   conditioned on their known planets and on survey sensitivity. In progress; plan below.
 4. **Usability:** readable per-system summaries and export formats, including A9.
 
 Phase 7 (learned emulators) only if profiling in phase 6 shows it pays off.
+
+## Phase 6 plan (real-star conditioning, branch `phase6`)
+
+Goal: `python -m starsys.real "Barnard's Star"` returns systems that are drawn from the model,
+contain the star's known planets, and are consistent with the surveys that did not find more.
+Code in a new package `src/starsys/real/`. Each step ends with a commit, tests and a validation
+note (`docs/validation/phase6.md`).
+
+1. **The star** (`real/catalog.py`, `real/star.py`). Lookup by any common name (HD, HIP, GJ,
+   TIC, Gaia, proper and Bayer names) in the 20-pc census (Kirkpatrick+2024; components and
+   hierarchy) and the NASA Exoplanet Archive hosts; Gaia DR3 online (cached) as a fallback.
+   Measured Teff, radius or luminosity, mass, log g, [Fe/H] and age with their errors give a
+   posterior over (initial mass, age, [Fe/H]) by importance sampling the population prior
+   through `evolve` (MIST, remnants, substellar). Known companions come from the census with
+   their initial masses; separations from the components' positions, else drawn from the
+   population model below the resolution limit. Output: `systems, components` for N
+   realisations, so that `attach_planets` and `attach_moons` run unchanged.
+   *Done (2026-10-15):* adds the Bright Star Catalogue, PASTEL and the WDS
+   (`python -m starsys.real.fetch`); giants are fitted on the MIST isochrone nodes; a second,
+   adapted round of draws where the first gives fewer than 300 effective samples.
+2. **Known planets and conditioning** (`real/known.py`, `real/condition.py`). Known planets from
+   the NASA archive. Prior systems are drawn for the star and weighted by how well they contain
+   the known planets (kernels in log P and log R or log M sin i), times the probability that
+   each of their other planets was missed. Transiting planets are matched by re-orienting the
+   system so that the planet transits (weighted by the transit probability), so co-transiting
+   neighbours come out right. Matched planets are snapped to the measured values. Known planets
+   the prior cannot make are inserted with a penalty; the effective sample size is reported.
+3. **Survey sensitivity** (`real/surveys.py`), per method:
+   - transit: TESS sectors (tess-point) with a noise model by Tmag; Kepler DR25 for Kepler
+     targets;
+   - RV: the star's own archival time series where it exists (HARPS RVBank, HIRES Butler+2017,
+     CARMENES DR1) with an expected-Delta-chi^2 detection test; otherwise a monitoring
+     probability by magnitude and spectral type from those surveys' target lists;
+   - astrometry: Gaia DR3 RUWE (no excess = no detectable wobble over ~3 yr);
+   - imaging: coarse contrast limits, off unless the star is a known imaging target.
+4. **Validation and report**: self-consistency on simulated stars (posterior coverage of
+   unseen planets), benchmark stars (the Sun seen from 10 pc, alpha Cen A/B, Proxima,
+   Barnard's Star, TRAPPIST-1, eps Eri, Vega, Sirius), runtime.
 
 ## Resuming
 

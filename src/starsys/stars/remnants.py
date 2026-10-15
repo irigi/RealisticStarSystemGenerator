@@ -79,16 +79,18 @@ def cool_white_dwarf(mass, cooling_age_yr, hydrogen):
     for atm, sel in (("H", hydrogen), ("He", ~hydrogen)):
         masses, tracks = tabs[atm]
         masses = np.array(masses)
-        for s in np.flatnonzero(sel):
-            m = np.clip(mass[s], masses[0], masses[-1])
-            k = int(np.clip(np.searchsorted(masses, m) - 1, 0, len(masses) - 2))
-            w = (m - masses[k]) / (masses[k + 1] - masses[k])
+        idx = np.flatnonzero(sel)
+        m = np.clip(mass[idx], masses[0], masses[-1])
+        k = np.clip(np.searchsorted(masses, m) - 1, 0, len(masses) - 2)
+        w = ((m - masses[k]) / (masses[k + 1] - masses[k]))[:, None]
+        for kk in np.unique(k):
+            g = k == kk
+            s = idx[g]
             vals = []
-            for kk in (k, k + 1):
-                t = tracks[kk]
+            for t in (tracks[kk], tracks[kk + 1]):
                 x = np.clip(log_t[s], t[0, 0], t[-1, 0])
-                vals.append([np.interp(x, t[:, 0], t[:, c]) for c in (1, 2, 3)])
-            res[s] = (1 - w) * np.array(vals[0]) + w * np.array(vals[1])
+                vals.append(np.column_stack([np.interp(x, t[:, 0], t[:, c]) for c in (1, 2, 3)]))
+            res[s] = (1 - w[g]) * vals[0] + w[g] * vals[1]
     log_teff, log_l, log_g = res.T
     # R from L = 4 pi R^2 sigma T^4, in solar units (Teff_sun = 5772 K).
     log_r = 0.5 * log_l - 2.0 * (log_teff - np.log10(5772.0))

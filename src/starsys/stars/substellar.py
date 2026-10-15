@@ -31,18 +31,21 @@ class _TrackSet:
         self.log_m = np.log10(np.asarray(masses)[order])
         self.tracks = [tracks[i] for i in order]
 
-    def _one(self, k, log_age):
+    def _at(self, k, log_age):
         t = self.tracks[k]
         x = np.clip(log_age, t[:, 0][0], t[:, 0][-1])
-        return np.array([np.interp(x, t[:, 0], t[:, c]) for c in (1, 2, 3)])
+        return np.column_stack([np.interp(x, t[:, 0], t[:, c]) for c in (1, 2, 3)])
 
     def __call__(self, mass, log_age):
         lm = np.log10(mass)
+        log_age = np.asarray(log_age, dtype=float)
         out = np.empty((len(lm), 3))
-        for s, (m, a) in enumerate(zip(lm, log_age)):
-            k = int(np.clip(np.searchsorted(self.log_m, m) - 1, 0, len(self.log_m) - 2))
-            w = np.clip((m - self.log_m[k]) / (self.log_m[k + 1] - self.log_m[k]), 0.0, 1.0)
-            out[s] = (1 - w) * self._one(k, a) + w * self._one(k + 1, a)
+        k = np.clip(np.searchsorted(self.log_m, lm) - 1, 0, len(self.log_m) - 2)
+        w = np.clip((lm - self.log_m[k]) / (self.log_m[k + 1] - self.log_m[k]), 0.0, 1.0)
+        for kk in np.unique(k):
+            s = np.flatnonzero(k == kk)
+            ws = w[s][:, None]
+            out[s] = (1 - ws) * self._at(kk, log_age[s]) + ws * self._at(kk + 1, log_age[s])
         return out  # log_Teff, log_L, log_R
 
 
