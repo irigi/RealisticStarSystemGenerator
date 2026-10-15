@@ -294,6 +294,47 @@ def report(stars, cls_pl, model: gp.GiantModel, reps: int):
              100 * host_frac(gd, a=ar, m=(mr[0] * MJUP_E, mr[1] * MJUP_E), key="planet_mass"), obs)
 
 
+def _pair_spearman(host, logm):
+    from scipy.stats import spearmanr
+
+    a, b = [], []
+    order = np.argsort(host, kind="stable")
+    host, logm = host[order], logm[order]
+    starts = np.flatnonzero(np.r_[True, host[1:] != host[:-1]])
+    ends = np.r_[starts[1:], len(host)]
+    for lo, hi in zip(starts, ends):
+        for i in range(lo, hi):
+            for j in range(i + 1, hi):
+                a.append(logm[i])
+                b.append(logm[j])
+    return spearmanr(a, b).statistic, len(a)
+
+
+def report_architecture(cls_pl, model: gp.GiantModel, reps: int):
+    """Single vs multi-giant systems in the CLS-like detectable subset at a >= 0.1 au (Rosenthal+2023, CLS IV)."""
+    from scipy.stats import ks_2samp
+
+    stars, _ = load_cls()
+    g = simulate(stars, model, reps, seed=11)
+    d = cls_pl[cls_detectable(cls_pl) & (cls_pl["a"] >= 0.1)]
+    mult = d["host"].map(d.groupby("host").size()).to_numpy()
+    sel = detectable(g) & (g["a_au"] >= 0.1) & ~g["hot"]
+    host = g["host"][sel]
+    cnt = np.bincount(host, minlength=g["n_stars"])[host]
+    print("\nSingle vs multi-giant systems (CLS-like detectable giants at >= 0.1 au, Rosenthal+2023):")
+    r_obs, n_obs = _pair_spearman(d["host"].to_numpy(), np.log(d["msini_e"].to_numpy()))
+    r_mod, _ = _pair_spearman(host[cnt >= 2], np.log(g["msini"][sel][cnt >= 2]))
+    _row("Spearman correlation of log M sin i within systems (pairs)", r_mod,
+         f"{r_obs:.2f} (CLS, {n_obs} pairs)")
+    for name, m_obs, m_mod in (("single", mult == 1, cnt == 1), ("multi", mult >= 2, cnt >= 2)):
+        _row(f"median M sin i (MJup), {name}", np.median(g["msini"][sel][m_mod]) / MJUP_E,
+             f"{d['msini_e'][m_obs].median() / MJUP_E:.2f} (CLS, n = {m_obs.sum()})",
+             "(CLS misses part of the < 0.3 MJ giants)")
+    ks = ks_2samp(d["e"][mult == 1], d["e"][mult >= 2]).pvalue
+    print(f"  eccentricities, single vs multi: CLS KS p = {ks:.2f} (not significant in this subset; the model's "
+          f"eccentricity prior does not depend on multiplicity)")
+
+
 def report_hmc_overlap(model: gp.GiantModel):
     """Inside 3-300 d, planets below 10 Earth radii come from HM-C; compare its M >= 30 Me planets with CLS.
 
@@ -381,6 +422,7 @@ def main() -> None:
         model = calibrate(stars, cls_pl, model, args.reps)
         print("Calibrated:", {k: getattr(model, k) for k in ("norm", "dispersion", "hj_rate", "hj_outer_boost")}, "\n")
     report(stars, cls_pl, model, args.reps)
+    report_architecture(cls_pl, model, args.reps)
     report_hmc_overlap(model)
     report_howard()
     report_population()
