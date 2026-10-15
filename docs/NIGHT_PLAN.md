@@ -48,7 +48,7 @@ unticked item.
 5. [x] **Real-star blend** (done: `starsys.realstars`): catalogue stars (20-pc census + a magnitude-limited bright-star
    catalogue, e.g. Hipparcos via VizieR) with their selection functions; thinning of procedural
    stars; real stars open through starsys.real conditioning.
-6. [ ] **Star map window**: 3D rotatable (pyqtgraph OpenGL), level of detail (galaxy cloud far,
+6. [x] **Star map window** (done: `python -m starsys.view --galaxy`): 3D rotatable (pyqtgraph OpenGL), level of detail (galaxy cloud far,
    individual stars near camera), search by name/ID, click -> system viewer.
 7. [ ] **A10**: condition on known planets of all components (Alpha Cen -> Proxima b, d).
 8. [ ] **Moon heating review**: check moon masses (Canup & Ward 1e-4 scaling), forced
@@ -95,3 +95,13 @@ unticked item.
   the fill). IAU-named stars are kept down to parallax SNR 1.5 (Deneb, Betelgeuse).
   Downloads: Hipparcos I/239 via VizieR and the IAU-CSN name list (catalogs/, not committed);
   the merged table is cached in data/real/starmap.parquet (~25 s to build).
+- D10 (item 6): star map = pyqtgraph OpenGL. Stars are drawn by apparent magnitude *from
+  the camera* against a limit that follows the zoom, times a spatial window around the view
+  centre (a map, not a sky; otherwise ~15k Hipparcos stars within 120 pc swamp the view).
+  Beyond 3 kpc camera distance only the galaxy cloud (150k points sampled from the density
+  model, arms young/blue) is shown. Elite-style depth cues: rings in the plane through the
+  view centre and drop lines for the ~400 brightest nearby stars. Procedural sectors load
+  12 per 60-ms tick within 12-45 pc of the view centre. Labels: IAU/Bayer/Flamsteed names.
+- D11 (item 6): clicking a real star runs the real-star conditioning (12 realisations) in a
+  worker thread and opens the system viewer on them; a procedural star opens the viewer with
+  Previous/Next walking its loaded neighbours by distance.

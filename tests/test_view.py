@@ -68,3 +68,27 @@ def test_window_navigation_and_selection(tmp_path):
     assert w.k == 75
     assert not w.grab().isNull()
     w.close()
+
+
+def test_galaxy_source_and_star_appearance():
+    from PySide6.QtWidgets import QApplication
+
+    from starsys import galaxy as gx
+    from starsys.view.app import SystemWindow
+    from starsys.view.starmap import GalaxySource, appearance, teff_colour
+    app = QApplication.instance() or QApplication([])
+    sec = gx.sector(20, 5, 0)
+    src = GalaxySource([sec.sid(0), sec.sid(1)])
+    w = SystemWindow(src, 0)
+    w.load(0)
+    assert w.id_edit.text() == sec.sid(0)
+    w.step(+1)
+    assert w.k == 1
+    assert src.index_of(sec.sid(3)) == 2
+    w.close()
+    app.processEvents()
+    col = teff_colour(np.array([3000.0, 6000.0, 20000.0]))
+    assert col[0, 0] > col[0, 2] and col[2, 2] > col[2, 0]
+    xyz = np.array([[0.0, 0, 0], [5, 0, 0], [500, 0, 0]])
+    size, c = appearance(np.array([5.0, 15.0, 5.0]), xyz, np.array([0.0, 0, 50]), 50.0, col)
+    assert size[0] > size[1] and size[2] == 0  # bright near star big, far star outside the window hidden
