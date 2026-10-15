@@ -45,7 +45,7 @@ unticked item.
    bar/bulge, halo, log-spiral arms, Sun at ~8.2 kpc), position-dependent age/[Fe/H],
    arm-enhanced young stars; sectors seeded by coordinates, Poisson counts, system seed =
    hash(sector, j). Sources for every number in docs/ASSUMPTIONS.md.
-5. [ ] **Real-star blend**: catalogue stars (20-pc census + a magnitude-limited bright-star
+5. [x] **Real-star blend** (done: `starsys.realstars`): catalogue stars (20-pc census + a magnitude-limited bright-star
    catalogue, e.g. Hipparcos via VizieR) with their selection functions; thinning of procedural
    stars; real stars open through starsys.real conditioning.
 6. [ ] **Star map window**: 3D rotatable (pyqtgraph OpenGL), level of detail (galaxy cloud far,
@@ -87,3 +87,11 @@ unticked item.
   ~5e10: the disc comes out ~35 % light; local normalisation from the census was kept).
 - D8 (item 4): sectors are 10-pc cubes (~80 systems near the Sun, ~5600 at the centre); IMF
   and multiplicity are the local ones everywhere; ages/[Fe/H] by component and radius.
+- D9 (item 5): catalogues = 20-pc census (complete) + Hipparcos Survey part (complete to
+  V <= 7.9/7.3 + 1.1|sin b|, ESA 1997) with parallax SNR > 5; procedural systems are removed
+  exactly when they would be in those (selection function is 0/1, so no random thinning
+  needed). Check: in 25-55 pc shells the procedural systems that would be catalogued match the
+  real Hipparcos count within 10 %. Fainter Hipparcos stars are left out (they would duplicate
+  the fill). IAU-named stars are kept down to parallax SNR 1.5 (Deneb, Betelgeuse).
+  Downloads: Hipparcos I/239 via VizieR and the IAU-CSN name list (catalogs/, not committed);
+  the merged table is cached in data/real/starmap.parquet (~25 s to build).

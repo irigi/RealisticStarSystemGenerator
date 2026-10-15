@@ -239,3 +239,11 @@ Gerhard (2016), halo profile from Juric et al. (2008) normalised to 1.4e9 Msun (
 2019), local density 0.081 systems/pc^3 from the 20-pc census. Assumed, not measured: the
 local IMF and multiplicity everywhere; one [Fe/H] gradient (-0.06 dex/kpc) for all thin-disc
 ages; arm contrast ±15 % for old stars and arm confinement of stars younger than 300 Myr.
+
+## Real stars in the star map (starsys.realstars)
+
+Real systems come from the 20-pc census (treated as complete) and the Hipparcos Survey (complete
+to V = 7.9 + 1.1|sin b| before G5, 7.3 + 1.1|sin b| later; ESA 1997). A procedural system is
+removed when these catalogues would list it. Assumed: Hipparcos parallax error 0.9 mas for all
+Survey stars; extinction 0.7 mag/kpc in a 100-pc dust layer; bolometric corrections from the
+Mamajek dwarf table also for giants.
