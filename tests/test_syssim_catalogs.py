@@ -19,14 +19,13 @@ def test_parse_header_types_and_repeats():
     assert isinstance(h["mr_model"], list) and len(h["mr_model"]) == 2
 
 
-@pytest.mark.parametrize("name", ["hfr2020_linear_fswp", "hfr2019_clustered_pr_ks"])
-def test_local_catalogs_read(name):
+def test_local_catalogs_read():
     from starsys.syssim_catalogs import read_physical_catalog
 
-    model = MODELS[name]
+    model = MODELS["hmc"]
     if not model.path.exists():
         pytest.skip("catalog not downloaded")
     params, df = read_physical_catalog(model, 1)
-    assert df["planet_radius"].between(0.5 - 1e-6, 10 + 1e-6).all()
+    assert df["planet_radius"].between(0.3, 10 + 1e-6).all()  # stripped cores go below 0.5
     assert df["period"].between(3, 300).all()
     assert params["min_period"] == 3.0

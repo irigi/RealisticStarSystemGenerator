@@ -33,16 +33,14 @@ Machine learning is used where it adds something:
 | Path | What | Use |
 |---|---|---|
 | `He_Ford_2026_HM-C/depth_min_0.29/` | Paper IV hybrid model, clustered masses (HM-C), the 100 posterior catalogs with the deepest radius valleys | **primary inner-system model** |
-| `He_et_al_2020_H20/MaxAMD/` | Paper III maximum-AMD model (H20) | cross-check; architecture |
-| `He_Ford_Ragozzine_2020/*` | Paper II, colour-dependent fraction of stars with planets | cross-check of f_swp(colour) |
-| `He_Ford_Ragozzine_2019/*` | Paper I clustered models | historical; not used for generation |
 | `stellar_tables/` | Kepler target tables; `star_id` = 1-based row index | join stellar Teff/colour/CDPP to catalogs |
+| `stellar_models/`, `papers/` | MIST, BHAC15, ATMO, white-dwarf cooling tables; PDFs of every cited paper | stellar evolution; sources |
 | `mr_model/` | Ning+2018 M–R table, Zeng+2019 rocky/iron curves | mass–radius |
 | `observational/` | Kepler DR25 KOI table, NASA Exoplanet Archive `ps` and `pscomppars` (date in `RETRIEVED_DATE`) | validation and real-star conditioning |
 
-Mapping of `star_id` to stellar table: Paper I → `q1_q17_dr25_gaia_fgk_cleaned.csv`
-(79,935); Paper II → `..._HFR2020a_cleaned.csv` (88,912); Papers III/IV →
-`..._berger_fgk_HFR2020b_cleaned.csv` (86,760). Checked by matching masses and radii.
+HM-C's `star_id` maps to `q1_q17_dr25_gaia_berger_fgk_HFR2020b_cleaned.csv` (86,760 stars;
+checked by matching masses and radii). The earlier papers' catalogs (H20, Papers I–II) were
+only cross-checks and are no longer read.
 
 ## 3. Architecture
 
@@ -122,9 +120,8 @@ dwarf sequence with a Kepler-calibrated offset and scatter; validated on Kepler 
   (Reffert+2015; Wolthoff+2022).
 - **Giant planets, 0.03–30 AU:** occurrence vs semi-major axis from Fulton+2021
   (California Legacy Survey); scaling with stellar mass and metallicity per
-  Johnson+2010 and Fischer & Valenti 2005; inner-small/outer-giant correlation from
-  Bryan & Lee 2024, Weiss+2024 and He & Weiss 2023; wide orbits capped by
-  direct-imaging rates (Nielsen+2019, Vigan+2021).
+  Johnson+2010 and Fischer & Valenti 2005; wide orbits capped by direct-imaging rates
+  (Nielsen+2019, Vigan+2021).
   Implemented in `starsys.outer.giants` (validated: `docs/validation/planets.md` §4.3):
   CLS warm/cold giants to 30 au, hot Jupiters and direct-imaging wide giants to
   100 au. The latest and largest samples find no inner-small/outer-giant correlation at
@@ -195,10 +192,10 @@ dwarf sequence with a Kepler-calibrated offset and scatter; validated on Kepler 
 
 ## 4. Phases
 
-1. **Data layer:** parquet cache of catalogs joined to stellar tables; loaders; tests.
-2. **HM-C port + validation** against the HM-C catalogs (and H20 as a cross-check).
-3. **Star population synthesis** + 10/20-pc calibration.
-4. **Extensions** (M dwarfs, giants, cold small planets, binaries, evolved stars).
+1. **Data layer:** catalog readers joined to stellar tables; loaders; tests (done).
+2. **HM-C port + validation** against the HM-C catalogs (done).
+3. **Star population synthesis** + 10/20-pc calibration (done).
+4. **Extensions** (M dwarfs, giants, cold small planets, binaries, evolved stars) (done).
 5. **Moons** and derived planet properties (T_eq, insolation, tidal locking,
    habitable-zone flags), plus Kozai–Lidov cycles and tidal decay around giant stars (done
    2026-10-15).
@@ -208,4 +205,5 @@ dwarf sequence with a Kepler-calibrated offset and scatter; validated on Kepler 
 
 Each phase ends with a validation report (plots + metrics against data).
 
-Current status and the concrete plan for the next phase: `docs/NEXT_STEPS.md`.
+Current status and the concrete plan for the next phase: `docs/NEXT_STEPS.md`. What the model
+assumes where data run out, and the alternatives: `docs/ASSUMPTIONS.md`.
