@@ -114,6 +114,11 @@ def main(argv=None):
         "",
         _md(vd.hz_census(comp, pl)),
         "",
+        "Time conservative-HZ planets (< 10 Earth masses) spent in a runaway greenhouse after forming at "
+        "10 Myr, while their star was brighter (Luger & Barnes 2015: tens to hundreds of Myr for M dwarfs):",
+        "",
+        _md(vd.runaway(comp, pl), ".1f"),
+        "",
         "## Spin states",
         "",
         _md(vd.locking(comp, pl), ".1f"),

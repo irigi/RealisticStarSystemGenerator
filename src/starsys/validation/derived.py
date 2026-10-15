@@ -143,6 +143,25 @@ def rotation(comp, pl) -> pd.DataFrame:
     return pd.DataFrame(rows).set_index("planets")
 
 
+def runaway(comp, pl) -> pd.DataFrame:
+    """Early runaway greenhouse of conservative-HZ planets below 10 Earth masses around main-sequence
+    stars, by stellar mass (Luger & Barnes 2015, Fig. 4: tens to hundreds of Myr throughout M-dwarf
+    habitable zones, a few tens of Myr for K dwarfs if they form early, negligible above 0.8 Msun)."""
+    m = np.asarray(comp["mass"])
+    c = pl["component"]
+    hz = (pl["hz"] == dv.HZ_CONSERVATIVE) & (pl["host_kind"] == "S") & _ms_hosts(comp)[c] & (pl["planet_mass"] < 10)
+    rows = []
+    for lo, hi in ((0.1, 0.2), (0.2, 0.35), (0.35, 0.5), (0.5, 0.65), (0.65, 0.8), (0.8, 1.0), (1.0, 1.4)):
+        x = hz & (m[c] >= lo) & (m[c] < hi)
+        v = pl["t_runaway_myr"][x]
+        if len(v) < 30:
+            continue
+        rows.append({"host mass (Msun)": f"{lo:g}-{hi:g}", "HZ planets": int(x.sum()),
+                     "median (Myr)": np.nanmedian(v), "84th pct (Myr)": np.nanpercentile(v, 84),
+                     "% > 100 Myr": 100 * np.mean(v > 100)})
+    return pd.DataFrame(rows).set_index("host mass (Msun)")
+
+
 def kozai_census(comp, pl, n_without) -> pd.DataFrame:
     kz = (pl["flags"] & planets.FLAG_KOZAI) > 0
     s_type = pl["host_kind"] == "S"
@@ -215,6 +234,8 @@ def main(argv=None):
                                    binaries=planets.bn.BinaryModel(kozai=False), derived=None)
     print("\n== Rotation of free planets ==")
     print(rotation(comp, pl))
+    print("\n== Early runaway greenhouse of HZ planets (Luger & Barnes 2015) ==")
+    print(runaway(comp, pl))
     print("\n== Habitable-zone planets per main-sequence star (S-type) ==")
     print(hz_census(comp, pl))
     print("\n== Spin states of main-sequence planets ==")

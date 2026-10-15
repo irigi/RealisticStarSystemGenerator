@@ -92,6 +92,16 @@ def test_rotation_with_a_generator():
     assert np.isfinite(out["obliquity_deg"]).all() and out["obliquity_deg"][0] == 0.0
 
 
+def test_early_runaway_greenhouse():
+    # A late M dwarf (Luger & Barnes 2015): mid-HZ planets spend tens to hundreds of Myr in a runaway greenhouse.
+    comp = {"system": np.zeros(2, int), "role": np.arange(2), "kind": np.array(["star", "star"], dtype=object),
+            "initial_mass": np.array([0.15, 1.0]), "feh": np.zeros(2), "age_gyr": np.array([5.0, 4.6])}
+    pl = {"component": np.array([0, 0, 1]), "planet_mass": np.array([1.0, 1.0, 1.0])}
+    t = dv.runaway_time(pl, comp, np.array([0.6, 0.05, 1.0]))  # mid-HZ and far out of the M dwarf; the Earth
+    assert 10.0 < t[0] < 1000.0 and t[1] == 0.0 and t[2] == 0.0
+    assert np.isnan(dv.runaway_time(pl, {"age_gyr": comp["age_gyr"]}, np.ones(3))).all()
+
+
 def test_binary_light():
     # Alpha Cen A with B at 23.5 au: B adds ~0.1% to an Earth analogue around A.
     systems, comp = _system([1.52, 0.50], [5790.0, 5260.0], [1.1, 0.9], a_comp=[23.5], ecc_comp=[0.52])

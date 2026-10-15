@@ -25,6 +25,15 @@ so the other columns do not depend on it. Without a generator the nominal values
   The fits cover 2600-7200 K; a planet whose flux comes more than 10% from stars outside that
   range (white dwarfs, A stars, brown dwarfs) is flagged ``hz_extrapolated`` and uses the fit
   at the nearest valid Teff.
+- **Early runaway greenhouse** ``t_runaway_myr``: time after formation (10 Myr, as Luger & Barnes
+  2015) that the planet spent inside the runaway-greenhouse limit of its present orbit, from the
+  host's MIST luminosity and Teff history (40 steps log-spaced to the present age). M dwarfs take
+  up to ~1 Gyr to reach the main sequence, so planets throughout their habitable zones spend
+  tens to hundreds of Myr in a runaway greenhouse and may lose several oceans of water (Luger &
+  Barnes 2015, Fig. 4). The past insolation is the present one scaled by the host's luminosity
+  (companions are assumed to scale alike; circumbinary planets follow the primary); orbits are
+  the present ones. NaN for hosts outside MIST (below 0.1 Msun, remnants) or without the
+  stellar columns.
 - **Primordial spin:** rocky planets end the giant-impact stage spinning fast, with
   isotropic spin axes: each component of the spin vector is Gaussian, with an RMS angular
   velocity ~0.53 of the breakup rate sqrt(G M_p / R_p^3) (Kokubo & Genda 2010, realistic
@@ -95,6 +104,8 @@ class DerivedModel:
     giant_mass: float = 50.0  # Earth masses
     giant_radius: float = 6.0  # Earth radii
     resonance_ecc: float = 0.1
+    runaway_start_myr: float = 10.0  # formation time (Luger & Barnes 2015)
+    runaway_steps: int = 40
     rocky_spin_rms: float = 0.527  # RMS primordial spin / breakup rate (Kokubo & Genda 2010: 2.35 rad/h, Earth)
     gas_spin_sigma_dex: float = 0.15
     gas_obliquity_sigma_deg: float = 25.0
@@ -215,6 +226,55 @@ def planet_kind(planet_mass, planet_radius, lost_envelope, model: DerivedModel =
     return np.where(giant, 2, np.where(rocky, 0, 1)).astype(np.int8)
 
 
+def runaway_time(planets, components, insolation, model: DerivedModel = DerivedModel()) -> np.ndarray:
+    """Myr spent inside the runaway-greenhouse limit since formation (see module docstring)."""
+    from .stars import mist
+
+    n = len(insolation)
+    out = np.full(n, np.nan)
+    if not all(k in components for k in ("initial_mass", "feh", "kind", "age_gyr")) or not n:
+        return out
+    comp = np.asarray(planets["component"])
+    mi = np.asarray(components["initial_mass"], dtype=float)
+    age = np.asarray(components["age_gyr"], dtype=float) * 1e3  # Myr
+    t0 = model.runaway_start_myr
+    ok_c = (np.asarray(components["kind"]) == "star") & (mi >= 0.1) & (age > t0)
+    sel = np.flatnonzero(ok_c[comp] & np.isfinite(insolation) & (insolation > 0))
+    if not len(sel):
+        return out
+    hosts, inv = np.unique(comp[sel], return_inverse=True)
+    k = model.runaway_steps
+    frac = np.linspace(0.0, 1.0, k)
+    t = t0 * (age[hosts, None] / t0) ** frac[None, :]  # Myr, (hosts, k)
+    ev = mist.evolve(np.repeat(mi[hosts], k), np.log10(t.ravel() * 1e6),
+                     np.repeat(np.asarray(components["feh"], dtype=float)[hosts], k))
+    lum = (10.0 ** ev["log_L"]).reshape(len(hosts), k)
+    teff = (10.0 ** ev["log_Teff"]).reshape(len(hosts), k)
+    alive = (ev["phase"].reshape(len(hosts), k) > -99)
+    ratio = np.where(alive, lum / lum[:, -1:], 0.0)
+    # Runaway limit per host and step at the three planet masses of Kopparapu+2014.
+    knots = [_poly(HZ_RUNAWAY[m], teff) for m in (0.1, 1.0, 5.0)]
+    s_now = insolation[sel]
+    # Planets never inside, or always inside, need no time series.
+    lo_lim, hi_lim = np.minimum.reduce(knots).min(axis=1), np.maximum.reduce(knots).max(axis=1)
+    never = s_now * ratio.max(axis=1)[inv] <= lo_lim[inv]
+    always = s_now * ratio.min(axis=1)[inv] > hi_lim[inv]
+    span = t[:, -1] - t[:, 0]
+    res = np.where(always, span[inv], 0.0)
+    todo = np.flatnonzero(~never & ~always)
+    if len(todo):
+        h = inv[todo]
+        lm = np.clip(np.log10(np.asarray(planets["planet_mass"], dtype=float)[sel[todo]]), -1.0, math.log10(5.0))
+        w_lo = (lm + 1.0)[:, None]
+        w_hi = (lm / math.log10(5.0))[:, None]
+        r01, r1, r5 = (kn[h] for kn in knots)
+        limit = np.where(lm[:, None] < 0, r01 + w_lo * (r1 - r01), r1 + w_hi * (r5 - r1))
+        inside = (s_now[todo, None] * ratio[h] > limit).astype(float)
+        res[todo] = (0.5 * (inside[:, 1:] + inside[:, :-1]) * np.diff(t, axis=1)[h]).sum(axis=1)
+    out[sel] = res
+    return out
+
+
 def derive_properties(planets, systems, components, model: DerivedModel = DerivedModel(),
                       rng=None) -> dict[str, np.ndarray]:
     """New per-planet columns (see module docstring) and the ``flags`` to OR in (``hz_flags``).
@@ -225,7 +285,8 @@ def derive_properties(planets, systems, components, model: DerivedModel = Derive
     if not n:
         e = np.zeros(0)
         return {"insolation": e, "t_eq": e, "t_eq0": e, "hz": np.zeros(0, np.int8), "t_lock_gyr": e,
-                "spin": np.zeros(0, np.int8), "rotation_h": e, "obliquity_deg": e, "hz_flags": np.zeros(0, np.int32)}
+                "spin": np.zeros(0, np.int8), "rotation_h": e, "obliquity_deg": e, "t_runaway_myr": e,
+                "hz_flags": np.zeros(0, np.int32)}
     flux, t_src, lit = _sources(planets, systems, components)
     s = flux.sum(axis=1)
     lit = lit & (s > 0)
@@ -266,4 +327,5 @@ def derive_properties(planets, systems, components, model: DerivedModel = Derive
     rotation = np.where(locked, np.where(res, 2.0 / 3.0 * p_orb_h, p_orb_h), 1.0 / w)
     obliq = np.where(locked, 0.0, obliq)
     return {"insolation": s, "t_eq": t_eq, "t_eq0": t_eq0, "hz": hz, "t_lock_gyr": t_lock, "spin": spin,
-            "rotation_h": rotation, "obliquity_deg": obliq, "hz_flags": hz_flags}
+            "rotation_h": rotation, "obliquity_deg": obliq, "t_runaway_myr": runaway_time(planets, components, s, model),
+            "hz_flags": hz_flags}
