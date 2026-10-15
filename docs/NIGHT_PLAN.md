@@ -50,7 +50,7 @@ unticked item.
    stars; real stars open through starsys.real conditioning.
 6. [x] **Star map window** (done: `python -m starsys.view --galaxy`): 3D rotatable (pyqtgraph OpenGL), level of detail (galaxy cloud far,
    individual stars near camera), search by name/ID, click -> system viewer.
-7. [ ] **A10**: condition on known planets of all components (Alpha Cen -> Proxima b, d).
+7. [x] **A10** (done): condition on known planets of all components (Alpha Cen -> Proxima b, d).
 8. [ ] **Moon heating review**: check moon masses (Canup & Ward 1e-4 scaling), forced
    eccentricities, heating formula against literature (Heller & Pudritz on super-Jupiter moons);
    fix if a bug, otherwise label magma-ocean moons and document.
@@ -105,3 +105,7 @@ unticked item.
 - D11 (item 6): clicking a real star runs the real-star conditioning (12 realisations) in a
   worker thread and opens the system viewer on them; a procedural star opens the viewer with
   Previous/Next walking its loaded neighbours by distance.
+- D12 (item 7): A10 as a product of per-component likelihoods (planets of different components
+  are independent given the stars in the generator), each component with its own default surveys.
+  Model planets skip letters taken by known planets even when the archive spells the host
+  differently ("Proxima Cen b" vs "Proxima Centauri c").

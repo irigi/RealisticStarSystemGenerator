@@ -57,3 +57,24 @@ def test_known_transiting_planet_transits():
     assert np.all(np.abs(np.cos(pl["incl_sky"][sel])) < (r_star + pl["planet_radius"][sel] * cd.EARTH_RADIUS_AU)
                   / pl["a_au"][sel] + 1e-9)
     assert np.allclose(pl["planet_radius"][sel], known_planets("HD 209458")[0].radius)
+
+
+def test_known_planets_of_other_components():
+    """A10: alpha Cen A's systems carry Proxima's known planets around Proxima."""
+    from starsys.describe import names
+    from starsys.generate import Systems
+    from starsys.real.catalog import find
+    rec = find("Alpha Centauri", use_gaia=False)
+    c = cd.condition(rec, n=6, seed=3, model=SMALL, star_model=FAST_STAR, use_gaia=False, surveys=None)
+    other = [k.name for ks in c.known_other.values() for k in ks]
+    assert "Proxima Cen b" in other
+    prox = [j for j, comp in enumerate(rec.components) if comp.nasa_host == "Proxima Cen"][0]
+    pl = c.planets
+    for i in range(6):
+        on = (pl["system"] == i) & (pl["component"] == i * len(rec.components) + prox)
+        assert "Proxima Cen b" in set(pl["known_name"][on])
+    b = Systems.from_conditioned(c)
+    _, pn, _ = names(b, 0)
+    assert len(set(pn.values())) == len(pn)
+    assert not any(n.endswith((" b", " d")) and not n.startswith("Proxima Cen ") and n.startswith("Proxima")
+                   for n in pn.values())

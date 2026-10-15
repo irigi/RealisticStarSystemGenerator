@@ -161,10 +161,11 @@ Open:
 - **A6 (B28, B29, optional) Worldbuilding extras.** Small irregular moons (size
   distribution, Jewitt & Haghighipour 2007) and water lost during the runaway phase
   (Luger & Barnes 2015 escape rates).
-- **A10 Known planets of other components** (found in step 4). Conditioning uses the known
-  planets of the looked-up star only: Alpha Centauri (target α Cen A) is conditioned on 0
-  planets, although Proxima Centauri's are known. Look up and match the NASA planets of every
-  component (`real.known`, `real.condition`).
+- **A10 Known planets of other components** — DONE (phase 7 night run): `condition(...,
+  other_components=True)` multiplies in the kernels of every component's NASA planets (and,
+  with `surveys="auto"`, that component's own surveys); Alpha Centauri now carries Proxima b
+  and d. Open: a system has one orientation, so transiting known planets around two
+  components at once are not both honoured.
 
 ### B. Assumed (documented in `docs/ASSUMPTIONS.md`)
 

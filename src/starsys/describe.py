@@ -171,13 +171,16 @@ def names(bundle, i: int) -> tuple[dict[int, str], dict[int, str], dict[int, str
                 f"{cn[host]}+{star_name(bundle, c['role'][host] + 1)}"
         else:
             stem = cn[host]
-        used = {str(known[r]) for r in rows} if known is not None else set()
+        used = {str(known[r]) for r in rows if known[r]} if known is not None else set()
+        # letters of known planets are reserved even when the archive spells the host differently
+        # ("Proxima Cen b" around "Proxima Centauri")
+        taken = {u.split()[-1] for u in used if len(u.split()[-1]) == 1}
         letter = ord("b")
         for r in rows:
             if known is not None and known[r]:
                 pn[r] = str(known[r])
                 continue
-            while f"{stem} {chr(letter)}" in used and letter < ord("z"):
+            while (f"{stem} {chr(letter)}" in used or chr(letter) in taken) and letter < ord("z"):
                 letter += 1
             pn[r] = f"{stem} {chr(letter)}"
             letter += 1
