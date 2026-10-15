@@ -6,14 +6,17 @@ Model planets come from the stellar population through :func:`starsys.planets.at
 - **Census of evolved hosts:** planets per host, fraction with a giant planet, innermost
   and median orbit, by evolutionary phase.
 - **Giant planets around giant stars (Wolthoff+2022; Lick, EXPRESS and PPPS, 482 giants):**
-  completeness-corrected fraction of evolved stars with a planet of M sin i >= 0.8 MJup,
-  10.7 +2.2 -1.6% overall, 14.2 +4.1 -2.7% for RGB and 6.6 +2.0 -1.3% for horizontal-branch
-  stars; their mass-metallicity fit gives 11% and 7.4% for the two subsets' masses. Their
-  stars are mostly 1-3 Msun (mean ~1.7 Msun); the model is shown by mass.
-- **Close-in giants around giants:** RV surveys find almost no giant planets inside ~0.5 au
-  around giant stars (Johnson+2007; Sato+2008; Wolthoff+2022 find P < 90 d very rare),
-  partly from engulfment (Villaver & Livio 2009). Fraction with a giant inside 0.5 au, giant
-  stars vs main-sequence stars of the same mass.
+  completeness-corrected fraction of evolved stars with a planet of M sin i >= 0.8 MJup at
+  P > 89 d, 10.7 +2.2 -1.6% overall, 14.2 +4.1 -2.7% for RGB and 6.6 +2.0 -1.3% for
+  horizontal-branch stars. Their detections span 89-3168 d (baselines up to ~12 yr), so the
+  model counts planets at 89-4400 d. Their RGB stars average 1.3 Msun, their HB stars 2.1 Msun
+  (1-3.5 Msun), so the subsets differ mostly by mass; their mass-metallicity fit
+  (f = 0.128 exp(-(M - 1.68)^2 / (2 0.70^2)) 10^(1.38 [Fe/H])) gives 11% and 7.4% for the two
+  subsets. The model is shown by mass, next to that fit averaged over the model stars.
+- **Close-in giants around giants:** RV surveys find almost no giant planets with P < 90 d
+  around giant stars (Johnson+2007; Sato+2008; Wolthoff+2022: one at 89 d among 37 planets),
+  partly from engulfment and tidal decay (Villaver & Livio 2009). Fraction with a giant
+  inside 0.5 au and at P < 90 d, giant stars vs main-sequence stars of the same mass.
 - **White dwarfs:** fraction with surviving planets, in particular at 1-10 au where they can
   perturb planetesimals onto the star; 25-50% of white dwarfs show metal pollution
   (Koester+2014: 27% of DA white dwarfs accreting, up to ~50% with diffusion timescales).
@@ -74,9 +77,10 @@ def wolthoff(comp, pl) -> pd.DataFrame:
     g = _groups(comp)
     giants = g["RGB (2, log g < 3.5)"] | g["core-He burning (3)"]
     msini = pl["planet_mass"] * np.sin(pl["incl_sky"])
-    sel = (pl["host_kind"] == "S") & (msini >= 0.8 * MJUP_E) & (pl["period"] > 89.0)
+    sel = (pl["host_kind"] == "S") & (msini >= 0.8 * MJUP_E) & (pl["period"] > 89.0) & (pl["period"] < 4400.0)
     has = np.bincount(pl["component"][sel], minlength=len(comp["mass"])) > 0
     mass = np.asarray(comp["mass"])
+    fit = 12.8 * np.exp(-0.5 * ((mass - 1.68) / 0.70) ** 2) * 10 ** (1.38 * np.asarray(comp["feh"]))
     rows = []
     for name, lo, hi in (("1.0-1.5 Msun", 1.0, 1.5), ("1.5-2.0 Msun", 1.5, 2.0), ("2.0-3.0 Msun", 2.0, 3.0),
                          ("all 1-3 Msun", 1.0, 3.0)):
@@ -84,7 +88,8 @@ def wolthoff(comp, pl) -> pd.DataFrame:
             idx = np.flatnonzero(grp & (mass >= lo) & (mass < hi))
             if len(idx) < 30:
                 continue
-            rows.append({"mass": name, "stage": label, "stars": len(idx), "model %": 100 * has[idx].mean()})
+            rows.append({"mass": name, "stage": label, "stars": len(idx), "model %": 100 * has[idx].mean(),
+                         "Wolthoff fit %": fit[idx].mean()})
     out = pd.DataFrame(rows).set_index(["mass", "stage"])
     out.attrs["obs"] = "Wolthoff+2022: all 10.7 +2.2 -1.6%, RGB 14.2 +4.1 -2.7% (fit: 11%), HB 6.6 +2.0 -1.3% (fit: 7.4%)"
     return out
@@ -96,6 +101,7 @@ def close_in(comp, pl) -> pd.DataFrame:
     ms = (comp["kind"] == "star") & (comp["phase"] == 0)
     sel = (pl["host_kind"] == "S") & np.isin(pl["model"], GIANT_MODELS)
     has_close = np.bincount(pl["component"][sel & (pl["a_au"] < 0.5)], minlength=len(comp["mass"])) > 0
+    has_90 = np.bincount(pl["component"][sel & (pl["period"] < 90.0)], minlength=len(comp["mass"])) > 0
     has_any = np.bincount(pl["component"][sel], minlength=len(comp["mass"])) > 0
     mass = np.asarray(comp["mass"])
     rows = []
@@ -103,7 +109,7 @@ def close_in(comp, pl) -> pd.DataFrame:
         for label, grp in (("giant stars", giants), ("main sequence", ms)):
             idx = np.flatnonzero(grp & (mass >= lo) & (mass < hi))
             rows.append({"mass": name, "hosts": label, "stars": len(idx), "% giant < 0.5 au": 100 * has_close[idx].mean(),
-                         "% any giant": 100 * has_any[idx].mean()})
+                         "% giant P < 90 d": 100 * has_90[idx].mean(), "% any giant": 100 * has_any[idx].mean()})
     return pd.DataFrame(rows).set_index(["mass", "hosts"])
 
 

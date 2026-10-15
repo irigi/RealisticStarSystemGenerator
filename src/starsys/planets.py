@@ -361,8 +361,16 @@ def _evolve_orbits(k, pl, a_au, h, evolved: ev.EvolvedModel):
     r_eng = ev.engulfment_radius(pl["planet_mass"], h["mass_init"][k], h["r_max"][k], h["r_rgb"][k], h["alive"][k],
                                  evolved)
     keep = ~(old & (a_au < r_eng))
+    shrink = np.ones(len(k))
+    if evolved.tides:
+        e = np.flatnonzero(old & keep)
+        ke = k[e]
+        eng, shrink[e] = ev.tidal_decay(a_au[e], pl["planet_mass"][e], h["mass_init"][ke], h["feh"][ke], h["age"][ke],
+                                        h["alive"][ke], h["phase_now"][ke], h["lum_now"][ke], h["teff_now"][ke],
+                                        evolved)
+        keep[e[eng]] = False
     host_mass = np.where(old, h["mass_now"][k], h["mass"][k])
-    return np.where(old, a_au * h["mass"][k] / host_mass, a_au), host_mass, keep
+    return np.where(old, a_au * h["mass"][k] / host_mass * shrink, a_au), host_mass, keep
 
 
 def _add_pulsar_planets(result, systems, components, evolved: ev.EvolvedModel, rng):

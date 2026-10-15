@@ -85,6 +85,9 @@ def build_hosts(systems, components, rng, mdwarf: MDwarfModel | None = None,
         "evolved": old[idx], "r_max": np.zeros(n), "r_rgb": np.zeros(n), "mass_init": c["mass"][idx].astype(float),
         "mass_now": c["mass"][idx].astype(float), "alive": np.ones(n, dtype=bool),
         "p_bin": np.zeros(n),  # circumbinary hosts: period of the inner binary (d)
+        # Present state (differs from mass/radius/teff/luminosity for evolved hosts).
+        "phase_now": c["phase"][idx].astype(float), "teff_now": c["teff"][idx].astype(float),
+        "lum_now": c["luminosity"][idx].astype(float),
     }
     st = None
     if evolved is not None and old.any():
@@ -144,6 +147,7 @@ def build_hosts(systems, components, rng, mdwarf: MDwarfModel | None = None,
             "evolved": np.zeros(k, dtype=bool), "r_max": np.zeros(k), "r_rgb": np.zeros(k), "mass_init": m_pair,
             "mass_now": m_pair, "alive": np.ones(k, dtype=bool),
             "p_bin": np.asarray(components.get("period_days", np.full(n_c, np.nan)), dtype=float)[s],
+            "phase_now": c["phase"][p].astype(float), "teff_now": teff, "lum_now": lum,
         }
         h = {key: np.concatenate([h[key], cb[key]]) for key in h}
         order = np.lexsort((h["kind"], h["component"]))

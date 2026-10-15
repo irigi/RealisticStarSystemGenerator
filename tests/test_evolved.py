@@ -33,7 +33,7 @@ def _stars(kind, phase, initial_mass, mass, radius, teff, n):
 
 def test_white_dwarfs_keep_expanded_outer_planets():
     systems, comp = _stars("WD", np.nan, 1.0, 0.54, 0.012, 8000.0, 3000)
-    pl = planets.attach_planets(systems, comp, seed=1)
+    pl = planets.attach_planets(systems, comp, seed=1, evolved=ev.EvolvedModel(tides=False))
     assert len(pl["period"]) > 0
     assert ((pl["flags"] & planets.FLAG_EVOLVED) > 0).all()
     # Every survivor started outside its engulfment radius and moved out by M_prog / M_WD.
@@ -47,6 +47,32 @@ def test_white_dwarfs_keep_expanded_outer_planets():
     assert pl["host_mass"] == pytest.approx(0.54)
     # Periods follow the present-day mass.
     assert np.allclose(pl["period"], 365.25 * np.sqrt(pl["a_au"] ** 3 / 0.54))
+    # Tidal decay on the giant branches removes some more and only shrinks orbits.
+    tid = planets.attach_planets(systems, comp, seed=1)
+    assert 0 < len(tid["period"]) <= len(pl["period"]) and tid["a_au"].min() > 2.5
+
+
+def test_tidal_decay_on_the_giant_branch():
+    # A 1.07 Msun red giant of 8.7 Rsun (MIST state at 6.84 Gyr).
+    mi, feh, age = 1.0735, -0.173, 6.837
+    st = ev.mist.evolve(mi, np.log10(age * 1e9), feh)
+    assert 8.0 < 10 ** st["log_R"][0] < 9.5 and st["phase"][0] == 2
+    a = np.array([0.03, 0.055, 0.5, 2.0])
+    n = len(a)
+    eng, shrink = ev.tidal_decay(a, np.full(n, 318.0), np.full(n, mi), np.full(n, feh), np.full(n, age),
+                                 np.ones(n, dtype=bool), np.full(n, 2.0), np.full(n, 10 ** st["log_L"][0]),
+                                 np.full(n, 10 ** st["log_Teff"][0]))
+    assert eng.tolist() == [True, True, False, False]  # hot Jupiters inside ~3 R* are gone
+    assert shrink[3] == pytest.approx(1.0, abs=1e-6)
+    # White-dwarf progenitors (to the end of the AGB): MV12 find Jovian planets engulfed from
+    # ~3 au around 1 Msun and Terrestrial ones from ~1.5 au.
+    a = np.geomspace(0.5, 6.0, 200)
+    out = {}
+    for mp in (1.0, 318.0):
+        e, _ = ev.tidal_decay(a, np.full(200, mp), np.ones(200), np.zeros(200), np.full(200, 13.0),
+                              np.zeros(200, dtype=bool), np.zeros(200), np.ones(200), np.ones(200))
+        out[mp] = a[e].max()
+    assert 1.0 < out[1.0] < out[318.0] < 3.5
 
 
 def test_subgiants_get_main_sequence_planets():

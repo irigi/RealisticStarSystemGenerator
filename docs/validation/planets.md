@@ -39,9 +39,9 @@ All rates are intrinsic (planets per star, no detection model). Verdicts:
 | Hot Jupiters, transit-like vs RV-like samples | 0.62% / 0.80% | 0.4–0.6% / ~1% | match (not tuned) |
 | Inner multiplicity with the single-star boost | ≥ 5 planets: 0.49 → 0.68 of M-dwarf hosts | Kepler-fitted HM-C | tension (B21) |
 | Circumbinary planets, 4–6 / 6–10 / > 10 R⊕ (Armstrong+2014) | 14.6 / 7.8 / 3.7% | 14 / 10 / < 5.9% | match (calibrated; B22) |
-| Giant planets around giant stars (Wolthoff+2022) | 13.4% (RGB 13.1, HB 13.8) | 10.7 +2.2/−1.6% (RGB 14.2, HB 6.6) | consistent overall; HB tension (B23) (§4.6) |
-| Giant planets inside 0.5 au around giant stars | 2% (half the main-sequence rate) | almost none (Johnson+2007; Wolthoff+2022) | tension (B23) |
-| White dwarfs with planets | 40% (13% at 1–10 au) | 25–50% metal-polluted (Koester+2014) | consistent |
+| Giant planets around giant stars, 89–4400 d (Wolthoff+2022) | 5.2% (RGB 5.0, HB 5.4) | 10.7 +2.2/−1.6% (RGB 14.2, HB 6.6) | tension: model ~2× low (B23) (§4.6) |
+| Giant planets with P < 90 d around giant stars | 1.8–1.9% (main sequence 3.0–4.1%) | almost none (Johnson+2007; Wolthoff+2022) | tension (B23) |
+| White dwarfs with planets | 44% (15% at 1–10 au) | 25–50% metal-polluted (Koester+2014) | consistent |
 | Innermost white-dwarf planets (Mustill & Villaver 2012) | ~3 au (1 M☉ progenitor), ~10 au (4–8 M☉) | ~1.5 and ~10 au | consistent |
 
 **Where the model extrapolates** (generated report, 300,000 systems, 1.6 million planets): 35%
@@ -515,7 +515,8 @@ single stars now carry boosted inner systems: Beta(0.98, 2.13), was Beta(0.97, 2
 
 ## 4.6 Evolved stars and remnants (`starsys.evolved`)
 
-Command: `python -m starsys.validation.evolved` (400,000 systems, all models; 2026-10-14).
+Command: `python -m starsys.validation.evolved` (400,000 systems, all models; 2026-10-14,
+rerun 2026-10-15 with tidal decay).
 
 ### Model
 
@@ -532,9 +533,24 @@ Command: `python -m starsys.validation.evolved` (400,000 systems, all models; 20
   between 1 and 5 M☉ progenitors; it is interpolated in log M★ and as
   (ln M_p / ln 318)² in planet mass. These ratios come from MV12's critical initial orbits
   (Jupiters ~3 au at 1 M☉ and ~5 au at 5 M☉; Earths 1.5–3 au) divided by their maximum AGB radii.
-  Stars still on the giant branches have f ≥ 1; white dwarfs also passed their RGB tip.
-- **Orbits:** survivors move out by M_progenitor / M_now (adiabatic mass loss); periods use the
-  present mass.
+  White dwarfs also passed their RGB tip.
+- **Tidal decay (added 2026-10-15, phase 5 / B23):** the equilibrium tide in the convective
+  envelope (Villaver & Livio 2009: da/dt = −(f/τ)(M_env/M★) q(1+q)(R★/a)⁸ a, τ = [M_env R²/3L]^⅓,
+  f = 1 or (P/2τ)² when τ > P/2) is integrated along each host's past post-main-sequence
+  evolution, together with the expansion from mass loss. The past is read off one MIST
+  isochrone: stars slightly lighter than the host show its earlier states, timed by
+  homology (lifetime ∝ M^−β), anchored at the row matching the host's present L and Teff.
+  M_env = M − M_He-core (helium core masses added to the MIST grid), switched on between
+  Teff 6000 and 5000 K. A planet is engulfed when the star fills its Roche lobe in the
+  star–planet pair (R > ~0.8 a). Stars still on the giant branches engulf by this decay
+  (replacing f ≥ 1); white dwarfs by the decay or the MV12 ratios, whichever reaches further.
+  Integrated to the end of the AGB, Jovian planets around 1 / 2 / 5 M☉ stars are lost from
+  2.4 / 2.6 / 3.5 au and Earths from 1.2 / 1.4 / 2.2 au (MV12: ~3 and ~1.5 au at 1 M☉). The
+  dissipation is suppressed for hot Jupiters around subgiants (τ > P/2), so they survive
+  until the star reaches a few times their orbit, consistent with the hot Jupiters found
+  around low-luminosity giants (Grunblatt+2019).
+- **Orbits:** survivors move out by M_progenitor / M_now (adiabatic mass loss), times the tidal
+  shrinkage; periods use the present mass.
 - **Neutron stars:** 0.2% have 1–3 planets of 0.01–10 M⊕ at 0.1–1 au (PSR B1257+12-like).
   Nitu+2022 find < 0.5% among 800 pulsars. Flagged `pulsar`. Black holes have none.
 - **Flags:** `evolved` on all planets of these hosts. `post_interaction` marks systems where a
@@ -545,44 +561,64 @@ Command: `python -m starsys.validation.evolved` (400,000 systems, all models; 20
 
 | Phase | Stars | Planets per star | % with planets | % with giant | Innermost a (au) | Median a (au) |
 |---|---|---|---|---|---|---|
-| subgiant (log g ≥ 3.5) | 1,068 | 3.0 | 72 | 18 | 0.04 | 0.63 |
-| RGB (log g < 3.5) | 879 | 2.7 | 68 | 21 | 0.04 | 0.67 |
-| core-He burning | 636 | 1.3 | 58 | 21 | 0.17 | 3.0 |
-| AGB | 52 | 1.6 | 65 | 17 | 0.28 | 3.4 |
-| white dwarf | 23,371 | 0.66 | 40 | 14 | 1.7 | 28 |
+| subgiant (log g ≥ 3.5) | 1,068 | 3.2 | 72 | 16 | 0.015 | 0.66 |
+| RGB (log g < 3.5) | 879 | 2.9 | 69 | 18 | 0.017 | 0.76 |
+| core-He burning | 636 | 1.4 | 58 | 20 | 0.17 | 4.5 |
+| AGB | 52 | 1.3 | 60 | 10 | 0.28 | 3.1 |
+| white dwarf | 23,371 | 0.81 | 44 | 14 | 1.7 | 30 |
 
-Giant planets (M sin i ≥ 0.8 MJ, P > 89 d) around giant stars of 1–3 M☉: model 13.4%,
-Wolthoff+2022 10.7 +2.2/−1.6% (+1.2σ). By stage:
-- RGB: 13.1% against 14.2 +4.1/−2.7%;
-- horizontal branch: 13.8% against 6.6 +2.0/−1.3% (+3.6σ).
+Giant planets (M sin i ≥ 0.8 MJ) around giant stars of 1–3 M☉, counted at 89–4400 d: Wolthoff's
+detections span 89–3168 d with baselines up to ~12 yr. Until 2026-10-15 the check counted every
+period above 89 d, including direct-imaging giants at 10–100 au. That gave 13.4% and an
+apparent match.
 
-Wolthoff attribute their RGB/HB difference to the different stellar masses of the two subsets
-(their mass fit gives 11% and 7.4%). The model's HB stars are mostly 1–1.5 M☉ (10.8%), and the
-giant model has no mass-dependent period distribution (backlog B13).
+| Mass | Stage | Stars | Model | Wolthoff fit on the model stars |
+|---|---|---|---|---|
+| 1.0–1.5 M☉ | RGB / HB | 607 / 203 | 4.1 / 2.0% | 8.8 / 8.7% |
+| 1.5–2.0 M☉ | RGB / HB | 160 / 142 | 7.5 / 6.3% | 13.4 / 12.8% |
+| 2.0–3.0 M☉ | HB | 234 | 7.7% | 10.0% |
+| all 1–3 M☉ | RGB / HB / all | 795 / 579 / 1,374 | 5.0 / 5.4 / 5.2% | 9.8 / 10.2 / 10.0% |
 
-Giant planets inside 0.5 au:
+Observed: 10.7 +2.2/−1.6% overall, RGB 14.2 +4.1/−2.7%, HB 6.6 +2.0/−1.3%. Wolthoff's fit is
+f = 12.8% exp(−(M − 1.68)²/(2 · 0.70²)) 10^(1.38 [Fe/H]), evaluated at each model star's mass and
+[Fe/H]. The model is about half of it at all masses, and 3σ below the overall rate.
+
+Main-sequence stars of the population in the same window get 5.1% (0.9–1.1 M☉), 6.7% (1.0–1.5)
+and 9.1% (1.5–2.0). At 2 d–10 yr, 0.9–1.1 M☉ stars get 5.9%, near Cumming+2008's 6–9% for
+1–10 MJ. So the shortfall is specific to the giant-star surveys:
+- **Where the rest of the deficit comes from:** the population's giants are metal-poorer than
+  its dwarfs (−0.11 vs −0.02 dex at 1–1.5 M☉; the fit column includes this), and engulfment
+  removes planets inside ~1 au. That explains a factor ~0.6–0.8 relative to the dwarfs.
+- **What it does not explain:** the factor ~2 against the evolved-star surveys. Either
+  occurrence rises faster with stellar mass than Johnson+2010's ∝ M★ (the CLS calibration
+  has few stars above 1.3 M☉), or giant-star masses and planet samples are biased (the
+  "retired A star" mass debate; RV signals of stellar origin in giants). Backlog B23.
+
+Giant planets with P < 90 d:
 
 | Stellar mass | Giant stars | Main-sequence stars |
 |---|---|---|
-| 1.0–1.5 M☉ | 2.0% | 3.1% |
-| 1.5–2.5 M☉ | 1.8% | 4.5% |
+| 1.0–1.5 M☉ | 1.9% | 3.0% |
+| 1.5–2.5 M☉ | 1.8% | 4.1% |
 
-Engulfment removes the closest ones, but RV surveys of giants find almost none inside
-~0.5 au (Johnson+2007; Wolthoff+2022: P < 90 d very rare), including around subgiants, which are
-too small to have engulfed them. That points to a primordial difference for intermediate-mass
-stars (backlog B23, with B13).
+The tidal decay removes hot Jupiters once the star reaches a few times their orbit, but the
+survivors are warm giants at 0.1–0.4 au, 6–20 stellar radii from 4–15 R☉ giants, where the
+decay timescale exceeds 10¹⁰ yr even with f = 1. RV surveys of giants find almost none
+there (Johnson+2007; Wolthoff+2022: one planet at 89 d among 37), and subgiants are too
+small to have engulfed them (Bowler+2010). That remains a tension, primordial or
+observational (B23).
 
 White dwarfs (by progenitor mass):
 
 | Progenitor (M☉) | % with planets | % with a planet at 1–10 au | % with giant | Innermost a, 5th percentile (au) | Median innermost a (au) |
 |---|---|---|---|---|---|
-| 0.8–1.5 | 46 | 26 | 11 | 3.0 | 8.6 |
-| 1.5–2.5 | 42 | 13 | 16 | 5.2 | 16 |
-| 2.5–4 | 35 | 2.5 | 16 | 8.9 | 48 |
-| 4–8 | 27 | 1.6 | 13 | 9.6 | 74 |
-| all | 40 | 13 | 14 | 3.7 | 17 |
+| 0.8–1.5 | 50 | 29 | 11 | 3.0 | 8.0 |
+| 1.5–2.5 | 48 | 14 | 17 | 5.4 | 16 |
+| 2.5–4 | 39 | 1.3 | 16 | 11 | 47 |
+| 4–8 | 29 | 0.0 | 12 | 17 | 79 |
+| all | 44 | 14 | 14 | 3.8 | 18 |
 
-40% of white dwarfs keep planets, against 25–50% showing metal pollution (Koester+2014). The
+44% of white dwarfs keep planets, against 25–50% showing metal pollution (Koester+2014). The
 innermost survivors lie beyond ~3 au for Sun-like progenitors and ~10 au for 4–8 M☉ (MV12: ~1.5
 and ~10 au; their closer 1 M☉ value is Jovian planets stranded by tides, which needs
 fine-tuning). For the Sun, Earth (engulfed inside 1.51 au) and Neptune-mass planets at 1.5 au
@@ -590,7 +626,7 @@ fine-tuning). For the Sun, Earth (engulfed inside 1.51 au) and Neptune-mass plan
 MIST's AGB radii are smaller than MV12's models at high mass (2.9 vs > 5 au at 5 M☉); the
 engulfment ratios are applied to MIST, so for massive progenitors the model engulfs less.
 
-Pulsar planets: 2 around 690 neutron stars in 400,000 systems.
+Pulsar planets: 0–2 around 690 neutron stars in 400,000 systems (0.2% rate).
 
 ## Backlog B7: planets inside 3 d (`starsys.inner.short`)
 

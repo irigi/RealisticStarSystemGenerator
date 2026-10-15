@@ -142,7 +142,8 @@ state). Planets inside the Mustill & Villaver (2012) engulfment radius, a multip
 maximum past radius from MIST, are removed; survivors move out by M_progenitor/M_now. Neutron
 stars get rare flagged pulsar planets ("pulsar", 0.2%); black holes none. Systems whose evolved
 component overfilled its Roche lobe are flagged `post_interaction`. 40% of white dwarfs keep
-planets (25–50% polluted). Giant stars host giant planets at 13% (Wolthoff+2022: 10.7%).
+planets (25–50% polluted). Giant stars host giant planets at 5% at 89–4400 d (Wolthoff+2022:
+10.7%; B23). Tidal decay on the giant branches added in phase 5.
 `python -m starsys.validation.evolved`; results in §4.6. Follow-up: B23.
 
 ### 4.7 Phase 4 validation report — done (2026-10-14)
@@ -272,12 +273,18 @@ Binaries and evolved stars (from 4.5/4.6):
   the placement (P/P_crit 1–2.5) and on the P_bin < 7 d shortfall. Wider binaries get the same
   planets near their limit (extrapolation). Revisit with TESS/BEBOP circumbinary statistics.
   Kozai–Lidov excitation of planets by inclined companions is not modelled (phase 5).
-- **B23** Giant stars have giant planets inside 0.5 au at 2% (1–1.5 M☉) and 1.8% (1.5–2.5 M☉),
-  about half the main-sequence rate. RV surveys of giants and subgiants find almost none there
-  (Johnson+2007; Bowler+2010; Wolthoff+2022), which engulfment alone does not explain for
-  subgiants. Horizontal-branch stars have 13.8% giant hosts against Wolthoff's 6.6 +2.0/−1.3%.
-  Do with B13 (mass-dependent period distribution). MIST's AGB radii at 5 M☉ are ~40% smaller
-  than MV12's models, so massive progenitors engulf less.
+- **B23** Giant stars (checked 2026-10-15 after adding tidal decay on the giant branches,
+  Villaver & Livio 2009, and counting only Wolthoff's detectable periods, 89–4400 d):
+  - **Occurrence:** the model gives 5.2% of 1–3 M☉ giants a ≥ 0.8 MJ planet, against
+    Wolthoff+2022's 10.7 +2.2/−1.6%, and about half of their mass–metallicity fit at every mass.
+    Main-sequence stars in the same window match Cumming+2008.
+  - **What the fix needs to decide:** either the giant occurrence rises faster with M★ than
+    Johnson+2010's ∝ M★, or giant-star masses and RV planet samples are biased.
+  - **Close-in giants:** giants with P < 90 d around giant stars stay at 1.8–1.9% (main
+    sequence 3–4%), against almost none observed. The survivors are warm giants at 6–20 R★,
+    beyond any tidal reach. A primordial cut for intermediate-mass stars (B13) or an
+    observational explanation is needed; subgiant hosts (Bowler+2010) point to primordial.
+  - **Engulfment radii:** MIST's AGB radii at 5 M☉ are ~40% smaller than MV12's models.
 
 Host mapping and age (from 4.1, low priority):
 

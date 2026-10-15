@@ -27,7 +27,7 @@ GRID_FILE = DATA_DIR / "stellar" / "mist_grid.npz"
 
 # Columns kept from the basic isochrones (0-based indices in the file).
 _COLS = {"log_age": 1, "initial_mass": 2, "star_mass": 3, "log_L": 7, "log_Teff": 10, "log_R": 11,
-         "log_g": 12, "phase": 24}
+         "log_g": 12, "phase": 24, "he_core_mass": 5}
 QUANTITIES = ("star_mass", "log_L", "log_Teff", "log_R", "log_g")
 
 
@@ -71,8 +71,13 @@ def load_grid():
     if not GRID_FILE.exists():
         build_grid()
     g = np.load(GRID_FILE)
-    # table columns: initial_mass, star_mass, log_L, log_Teff, log_R, log_g, phase
-    return g["fehs"], g["log_ages"], g["offsets"], g["counts"], np.ascontiguousarray(g["table"])
+    table = g["table"]
+    if table.shape[1] != len(_COLS) - 1:  # cached before a column was added
+        build_grid()
+        g = np.load(GRID_FILE)
+        table = g["table"]
+    # table columns: initial_mass, star_mass, log_L, log_Teff, log_R, log_g, phase, he_core_mass
+    return g["fehs"], g["log_ages"], g["offsets"], g["counts"], np.ascontiguousarray(table)
 
 
 @njit(cache=True)
