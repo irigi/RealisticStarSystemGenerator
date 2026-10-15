@@ -6,8 +6,9 @@ alternative would change. It is the counterpart of the validation docs, which li
 tested (`docs/validation/`).
 
 Each entry carries its backlog number (`docs/NEXT_STEPS.md`) where it has one. Entries marked
-**setting candidate** are planned to become user-selectable (step 2 of the plan), because the
-literature spans a range that matters for worldbuilding.
+**setting** are to become user-selectable with the data-based value as default (decided
+2026-10-15; step 2, A2 and A7), because the literature spans a range that matters for
+worldbuilding.
 
 Where a planet comes from a model used outside its measured range, it carries an
 extrapolation flag (`starsys.flags`), so generated systems show where they rest on
@@ -47,7 +48,7 @@ assumptions.
 - **Every planet starts with an H/He envelope (B16).** HM-C's radius model; photoevaporation
   strips the close-in ones. Temperate small planets are therefore mostly 1.5–3 R⊕ sub-Neptunes
   and η⊕ (rocky, conservative HZ, Sun-like stars) is 0.09. Published η⊕ ranges from ~0.05
-  (photoevaporation-aware, Neil & Rogers 2020) to ~0.6 (Bryson+2021). **Setting candidate**
+  (photoevaporation-aware, Neil & Rogers 2020) to ~0.6 (Bryson+2021). **Setting**
   (A2).
 - **2–8 d periods (B24).** HM-C and Hsu+2019 analyse the same Kepler sample and disagree: at
   3–4 d HM-C exceeds Hsu's 2–4 d bin for 2–6 R⊕ (×1.9 at 2–4 R⊕); at 4–8 d it has half of
@@ -88,7 +89,7 @@ assumptions.
   `NEXT_STEPS.md`).
 - **Wide orbits (B15).** Flat in ln a beyond the snow line out to 10 a_sl: 0.04 planets per
   star at s = 2–6, consistent with Zang+2025 and Suzuki+2016 near s ~ 1. Poleski+2021 (5
-  planets) find 1.4 +0.9/−0.6, 30× more. **Setting candidate.**
+  planets) find 1.4 +0.9/−0.6, 30× more. **Setting.**
 - **Orbits (B19).** Eccentricities Rayleigh σ = 0.05, inclinations σ = 1.4°, continuing HM-C's
   multis; nothing measures them. No small planets beyond 10 a_sl.
 
@@ -96,7 +97,7 @@ assumptions.
 
 - **Circumbinary planets (B22).** An empirical 4–10 R⊕ component calibrated to Armstrong+2014
   (~10 Kepler planets, rate uncertain by ~3×), placed at 1–2.5 × the stability limit. Wider
-  binaries get the same planets near their limit (extrapolation). **Setting candidate.**
+  binaries get the same planets near their limit (extrapolation). **Setting.**
 - **Suppression** by a close companion follows Moe & Kratter 2021 (0 at 1 au, 1 beyond
   200 au); planets are aligned with the companion's orbit in half the systems inside 700 au
   (Christian+2022).
@@ -112,14 +113,15 @@ assumptions.
 ## Derived properties
 
 - **Climate.** Equilibrium temperatures use a Bond albedo of 0.3 for every planet and full
-  heat redistribution (`t_eq0` is the zero-albedo value). Habitable zones are Kopparapu+2014, clamped outside 2600–7200 K
+  heat redistribution (`t_eq0` is the zero-albedo value). It is not a surface temperature:
+  no greenhouse effect (Earth: 255 K vs 288 K); see A9. Habitable zones are Kopparapu+2014, clamped outside 2600–7200 K
   (flagged `hz_extrapolated`; brown dwarfs, late M dwarfs, white dwarfs, A stars). Several
   stars combine as in Haghighipour & Kaltenegger 2013.
 - **Spin (B30).** Rocky planets start with Kokubo & Genda 2010's giant-impact spins (~3 h,
   isotropic axes), gas-rich ones near the Solar System giants' periods; all are slowed by the
   stellar tide with order-of-magnitude Q and k₂ (rocky Q = 100, k₂ = 0.3; gaseous Q = 10⁵,
-  k₂ = 0.5). Spin-down by moons and atmospheric thermal tides (Venus) is not modelled, so
-  moonless rocky planets keep short days.
+  k₂ = 0.5). Spin-down by moons (planned, A8) and atmospheric thermal tides (Venus) is not
+  modelled, so rocky planets keep short days.
 - **Early water loss (B29).** `t_runaway_myr` is the time a planet spent inside the runaway
   greenhouse limit while its young star was brighter (MIST histories). How much water it lost
   depends on unknown initial inventories and escape efficiencies and is not computed.

@@ -13,10 +13,11 @@ not kept as open tasks.
 
 1. **Settle the backlog** — done (2026-10-15): backlog sorted into planned work (below),
    assumptions (`docs/ASSUMPTIONS.md`) and things we won't do; repository cleaned up.
-2. **Worldbuilding-relevant fixes** (one session): A1–A4 below, A5–A6 if time allows.
+2. **Worldbuilding-relevant fixes** (one session): A1–A4 and A7–A8 below, A5–A6 if time
+   allows.
 3. **Phase 6, real-star conditioning** (`DESIGN.md` §3.5): systems around named stars,
    conditioned on their known planets and on survey sensitivity.
-4. **Usability:** readable per-system summaries and export formats.
+4. **Usability:** readable per-system summaries and export formats, including A9.
 
 Phase 7 (learned emulators) only if profiling in phase 6 shows it pays off.
 
@@ -59,7 +60,8 @@ Item numbers (B1–B30) are kept so that older commits and docs still resolve.
   (M: 0.49 → 0.68, K: 0.15 → 0.32): too many TRAPPIST-1-like systems. Cap it with the
   published Kepler M-dwarf multiplicity (Ballard & Johnson 2016; Hsu+2020's multiplicity;
   DC15) while keeping the planet-per-star averages.
-- **A2 (B16) Rocky or envelope-bearing temperate planets, as a setting.** HM-C gives every
+- **A2 (B16) Rocky or envelope-bearing temperate planets, as a setting** (decided
+  2026-10-15). HM-C gives every
   planet an initial H/He envelope, so most habitable-zone planets are 1.5–3 R⊕ and η⊕ (rocky,
   conservative HZ) is 0.09. Published η⊕ ranges from ~0.05 to ~0.6 (Neil & Rogers 2020;
   Bryson+2021); the data do not decide. Add a setting for the born-bare fraction outside
@@ -77,11 +79,24 @@ Item numbers (B1–B30) are kept so that older commits and docs still resolve.
   distribution, Jewitt & Haghighipour 2007) and water lost during the runaway phase
   (Luger & Barnes 2015 escape rates).
 
+- **A7 (B15, B22) Settings for wide-orbit small planets and circumbinary planets** (decided
+  2026-10-15). Defaults stay data-based (flat beyond the snow line; Armstrong+2014); the
+  settings reach Poleski+2021's wide-orbit rate and a factor ~3 either way for circumbinary
+  planets.
+- **A8 (B30) Spin-down by moons** (decided 2026-10-15). Moonless and moon-bearing rocky planets
+  both keep their primordial ~3 h days today. Transfer spin to the generated moons by the
+  tidal migration already computed in `moons._survive` (angular-momentum conservation, as
+  the Moon lengthened Earth's day from ~5 h to 24 h). Atmospheric thermal tides (Venus) stay
+  unmodelled.
+- **A9 Temperature presentation** (decided 2026-10-15; step 4). `t_eq` is the no-greenhouse
+  equilibrium temperature (Earth 255 K, real surface 288 K). Label it as such in summaries and
+  add a rough surface-temperature estimate for rocky planets, marked as illustrative.
+
 ### B. Assumed (documented in `docs/ASSUMPTIONS.md`)
 
 B4, B10, B13 (resonant chains), B15, B17, B18, B19, B20, B22, B23, B24, B25, plus the choices
 behind closed items (B1, B2, B9, B30). B15 (wide-orbit rate) and B22 (circumbinary rate) are
-candidates for settings alongside A2.
+settings, with A2 (A7).
 
 B18 is the only item more data would help: Zang+2025's KMTNet sensitivity functions and
 planet table are public on Dryad (doi:10.5061/dryad.ksn02v7cg) but block scripted downloads.
