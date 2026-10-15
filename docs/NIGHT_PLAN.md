@@ -54,7 +54,7 @@ unticked item.
 8. [x] **Moon heating review** (done: capped by tidal energy supply): check moon masses (Canup & Ward 1e-4 scaling), forced
    eccentricities, heating formula against literature (Heller & Pudritz on super-Jupiter moons);
    fix if a bug, otherwise label magma-ocean moons and document.
-9. [ ] Docs (DESIGN, NEXT_STEPS, ASSUMPTIONS, README-style usage), memory, morning summary.
+9. [x] Docs (DESIGN, NEXT_STEPS, ASSUMPTIONS, README-style usage), memory, morning summary.
 
 ## Decisions
 
@@ -116,3 +116,27 @@ unticked item.
   exceed 30 W/m^2 (was 234). Kept the generic giant k2/Q (5e-6) rather than Jupiter's measured
   1.1e-5, so an Io analogue gets ~0.5x Io's observed heat (changing it would also move tidal
   locking times). Moons above 20 W/m^2 are labelled "super-Io".
+
+## Morning summary (2026-10-15/16)
+
+All nine items done on `phase7-viewer` (not pushed); 103 tests pass. Screenshots in
+`docs/figures/phase7/`.
+
+Try:
+
+```bash
+source .venv/bin/activate
+python -m starsys.view                         # system viewer; Next/Previous (PageDown/PageUp)
+python -m starsys.view --real "tau Ceti"       # a real star's conditioned systems
+python -m starsys.view --galaxy                # 3D star map; search "Vega", click, "Open system"
+python -m starsys --id S1-42                   # any system again by its ID
+```
+
+What to look at / decide:
+- Art direction (`art_variety.png`): physics-guided palettes (Sudarsky giant classes,
+  climates, blackbody stars); no rings by choice (D4).
+- The galaxy comes out ~3.9e10 Msun vs ~5e10 real with the local census normalisation (D7).
+- A10 makes Alpha Centauri's systems carry Proxima b and d (and Proxima's own surveys).
+- Moon heating: capped by the planet's tidal energy supply; max 142 W/m^2 instead of 1.9e4 (D13).
+- Proposals for next steps in `docs/NEXT_STEPS.md` ("Next (proposals)"): open clusters, Gaia,
+  extinction maps, viewer legend.
