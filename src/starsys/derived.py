@@ -54,8 +54,8 @@ so the other columns do not depend on it. Without a generator the nominal values
 - **Rotation and obliquity:** ``rotation_h`` (sidereal, hours): the orbital period for
   synchronous planets, 2/3 of it in 3:2 resonance; for free planets the primordial spin
   slowed linearly by the stellar tide over the system's age (constant-Q torque, the same
-  model as t_lock). Spin-down by moons (the Earth's 24 h day comes from the Moon) and
-  atmospheric tides are not included. ``obliquity_deg``: 0 for locked planets (Cassini
+  model as t_lock). Spin-down by moons (the Earth's 24 h day comes from the Moon) is applied
+  by :func:`starsys.moons.attach_moons`; atmospheric tides are not included. ``obliquity_deg``: 0 for locked planets (Cassini
   state); isotropic for free rocky planets (Kokubo & Genda 2010); Rayleigh with 25 deg for
   free gas-rich planets (an assumption: the Sun's giants have 3, 27, 98 and 28 deg); NaN
   without a generator.

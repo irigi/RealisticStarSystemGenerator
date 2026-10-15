@@ -167,6 +167,28 @@ def census(comp, pl, m) -> pd.DataFrame:
     return pd.DataFrame(rows).set_index("kind")
 
 
+def spin(comp, pl, m) -> pd.DataFrame:
+    """Day lengths of free (not tidally locked) rocky planets, by their largest moon (A8)."""
+    kind = dv.planet_kind(pl["planet_mass"], pl["planet_radius"], pl["lost_envelope"])
+    sel = (kind == 0) & (pl["spin"] == dv.SPIN_FREE) & (pl["host_kind"] == "S")
+    ratio = np.zeros(len(pl["a_au"]))
+    np.maximum.at(ratio, m["planet"], m["mass"] / pl["planet_mass"][m["planet"]])
+    month = np.full(len(pl["a_au"]), np.inf)
+    np.minimum.at(month, m["planet"], m["period"] * 24.0)
+    rows = []
+    for label, lo, hi in (("no moon", 0.0, 0.0), ("moon, mass ratio 0.004-0.008", 0.004, 0.008),
+                          ("Moon-like, 0.008-0.016 (the Moon: 0.0123)", 0.008, 0.016),
+                          ("heavy, 0.016-0.03", 0.016, 0.03)):
+        x = sel & ((ratio == 0) if hi == 0 else ((ratio >= lo) & (ratio < hi)))
+        rot = pl["rotation_h"][x]
+        rows.append({"rocky planets": label, "n": int(x.sum()),
+                     "day 16th pct (h)": np.percentile(rot, 16) if x.any() else np.nan,
+                     "median (h)": np.median(rot) if x.any() else np.nan,
+                     "84th pct (h)": np.percentile(rot, 84) if x.any() else np.nan,
+                     "% day = month": 100 * np.mean(np.isclose(rot, month[x], rtol=0.01)) if x.any() else np.nan})
+    return pd.DataFrame(rows).set_index("rocky planets")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--systems", type=int, default=200_000)
@@ -186,6 +208,8 @@ def main(argv=None):
     print(survival(comp, pl, m))
     print("\n== Census ==")
     print(census(comp, pl, m))
+    print("\n== Day lengths of free rocky planets by their largest moon ==")
+    print(spin(comp, pl, m))
 
 
 if __name__ == "__main__":

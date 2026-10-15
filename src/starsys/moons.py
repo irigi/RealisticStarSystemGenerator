@@ -52,6 +52,17 @@ E = (21/2) (k2/Q) G M_p^2 R_m^5 n e^2 / a^6 (Peale+1979; Segatz+1988) with Io's 
 (Lainey+2009): Io itself gives 9e13 W, 2.2 W/m^2 (observed ~1e14 W). ``tidal_heating_w`` and
 ``heat_flux_w_m2`` (the Earth's internal heat flow is 0.09 W/m^2).
 
+**Planet spin** (``attach_moons`` updates the planet table's ``rotation_h`` in place): the
+moons' tidal migration exchanges angular momentum with the planet's spin. The orbital angular
+momentum a moon gains, m sqrt(G M_p a_end) - m sqrt(G M_p a_0) (negative for retrograde moons),
+is taken from the planet's spin, I = alpha M_p R_p^2. Planets with an impact moon start from the
+impact's spin (``impact_spin_h``) instead of their primordial one; the stellar tide's despin
+(:mod:`starsys.derived`, a constant torque) is kept. The spin cannot fall below the outermost
+moon's orbital rate (planet and moon synchronous, the Earth-Moon end state) nor below the
+orbital rate around the star. The Earth-Moon check: 5 h initial day, Moon from 3.8 to ~50
+Earth radii, a ~16 h day (the real Moon at 60 Earth radii gives 24 h). Locked planets are
+not changed.
+
 Planets of evolved hosts are treated on their present orbits (a moon that survives there is
 kept). Moons are not given to circumbinary or pulsar planets differently from others.
 """
@@ -180,8 +191,23 @@ def _draw(planets, rng, model: MoonModel, t_eq0):
     return {key: np.concatenate(v) if v else np.zeros(0) for key, v in out.items()}
 
 
+def _double_synchronous(inertia, mp, mm, a0, w0):
+    """Orbit (m) where planet spin and a prograde moon's orbit are synchronous, conserving the
+    angular momentum I w0 + m sqrt(G M a0); the outer (stable) root, by bisection in ln a."""
+    gm = G_SI * (mp + mm)
+    l_tot = inertia * w0 + mm * np.sqrt(gm * a0)
+    lo, hi = np.log(a0), np.log(np.maximum((l_tot / mm) ** 2 / gm, a0 * 1.0001))
+    for _ in range(60):
+        mid = 0.5 * (lo + hi)
+        a = np.exp(mid)
+        excess = mm * np.sqrt(gm * a) + inertia * np.sqrt(gm / a**3) - l_tot
+        # On the outer branch the total is increasing in a: too large -> move inward.
+        lo, hi = np.where(excess < 0, mid, lo), np.where(excess < 0, hi, mid)
+    return np.exp(0.5 * (lo + hi))
+
+
 def _survive(m, planets, t_lock, age, model: MoonModel, dmodel: dv.DerivedModel):
-    """Tidal evolution and stability: (kept mask, final a in planet radii)."""
+    """Tidal evolution and stability: (kept mask, final a in planet radii, initial a in planet radii)."""
     p = m["planet"]
     mp_e = np.asarray(planets["planet_mass"], dtype=float)[p]
     rp_e = np.asarray(planets["planet_radius"], dtype=float)[p]
@@ -213,13 +239,62 @@ def _survive(m, planets, t_lock, age, model: MoonModel, dmodel: dv.DerivedModel)
     roche = 2.44 * rp * (rho_p / rho_m) ** (1.0 / 3.0)
     # Outward-migrating moons that cross a_crit at any time are lost (the maximum of a is reached at t1).
     a_max = np.where(out, (a0**6.5 + rate * t1) ** (1.0 / 6.5), a0)
+    # Angular momentum: a prograde moon migrates out at most to the double-synchronous orbit
+    # (planet spin = moon's orbital rate; Pluto-Charon), where it stops.
+    _, _, alpha, _ = np.array([dmodel.tides_rocky, dmodel.tides_subneptune, dmodel.tides_giant])[kind].T
+    a_ds = _double_synchronous(alpha * mp * rp**2, mp, mm, a0, 2 * math.pi / (p0 * 3600.0))
+    stop = out & (a_max > a_ds)
+    a_max = np.where(stop, a_ds, a_max)
+    x = np.where(stop, np.maximum(a_ds**6.5 - rate * t2, 0.0), x)
     a_end = np.maximum(x, 0.0) ** (1.0 / 6.5)
     keep = (a_max < a_crit) & (a_end > np.maximum(roche, rp)) & (a0 < a_crit)
-    return keep, a_end / rp
+    return keep, a_end / rp, m["a_rp"]
+
+
+def spin_after_moons(planets, moons, a0_rp, age, t_lock, model: MoonModel = MoonModel(),
+                     dmodel: dv.DerivedModel = dv.DerivedModel()) -> np.ndarray:
+    """Planet rotation periods (hours) after the moons' tidal migration (see module docstring).
+
+    ``moons``: output of :func:`attach_moons`; ``a0_rp``: each moon's initial orbit (planet radii);
+    ``age``, ``t_lock``: per planet (Gyr)."""
+    rot = np.array(planets["rotation_h"], dtype=float, copy=True)
+    free = np.asarray(planets.get("spin", np.zeros(len(rot))), dtype=int) == dv.SPIN_FREE
+    p = moons["planet"]
+    if not len(p):
+        return rot
+    mp_e = np.asarray(planets["planet_mass"], dtype=float)
+    rp_e = np.asarray(planets["planet_radius"], dtype=float)
+    kind = dv.planet_kind(mp_e, rp_e, planets["lost_envelope"], dmodel)
+    alpha = np.array([dmodel.tides_rocky[2], dmodel.tides_subneptune[2], dmodel.tides_giant[2]])[kind]
+    mp = mp_e * EARTH_MASS_KG
+    rp = rp_e * EARTH_RADIUS_M
+    inertia = alpha * mp * rp**2
+    sign = np.where(moons["incl"] > math.pi / 2, -1.0, 1.0)
+    gm = G_SI * (mp[p] + moons["mass"] * EARTH_MASS_KG)
+    d_l = sign * moons["mass"] * EARTH_MASS_KG * np.sqrt(gm * rp[p]) * (np.sqrt(moons["a_rp"]) - np.sqrt(a0_rp))
+    d_w = np.bincount(p, weights=d_l, minlength=len(rot)) / inertia  # rad/s taken from the spin
+    # The stellar tide's despin (constant torque, from derive_properties): w = w0 (1 - age / t_lock).
+    w_now = 2 * math.pi / (rot * 3600.0)
+    frac = np.clip(np.asarray(age, dtype=float) / np.asarray(t_lock, dtype=float), 0.0, 1.0)
+    w0 = w_now / np.maximum(1.0 - frac, 1e-12)
+    impact = np.zeros(len(rot), dtype=bool)
+    impact[p[moons["kind"] == KIND_IMPACT]] = True
+    w0 = np.where(impact, 2 * math.pi / (model.impact_spin_h * 3600.0), w0)
+    w = w0 * (1.0 - frac) - d_w
+    # Floors: the outermost moon's orbital rate, the orbit around the star.
+    n_moon = np.zeros(len(rot))
+    np.maximum.at(n_moon, p, np.where(sign > 0, 2 * math.pi / (moons["period"] * 86400.0), 0.0))
+    p_orb = 2 * math.pi * np.sqrt((np.asarray(planets["a_au"], dtype=float) * AU_M) ** 3
+                                  / (G_SI * np.asarray(planets["host_mass"], dtype=float) * MSUN_KG))
+    w = np.maximum(w, np.maximum(n_moon, 2 * math.pi / p_orb))
+    has = np.bincount(p, minlength=len(rot)) > 0
+    upd = has & free & np.isfinite(rot)
+    rot[upd] = 2 * math.pi / w[upd] / 3600.0
+    return rot
 
 
 def attach_moons(planets, components, seed=None, model: MoonModel = MoonModel(),
-                 derived: dv.DerivedModel = dv.DerivedModel()) -> dict[str, np.ndarray]:
+                 derived: dv.DerivedModel = dv.DerivedModel(), update_spin: bool = True) -> dict[str, np.ndarray]:
     """Moons of ``planets`` (output of :func:`starsys.planets.attach_planets`).
 
     Returns a dict of per-moon arrays sorted by planet and orbit: ``planet`` (row index into
@@ -228,6 +303,9 @@ def attach_moons(planets, components, seed=None, model: MoonModel = MoonModel(),
     ``period`` (days), ``ecc`` (forced, resonant moons only), ``incl`` (rad, to the planet's
     equator; > pi/2 retrograde), ``tidal_heating_w``, ``heat_flux_w_m2``, ``composition``
     ("ice" or "rock") and ``flags`` (the planet's flags plus ``moon``).
+
+    With ``update_spin`` (default) and a ``rotation_h`` column in ``planets``, that column is
+    replaced in place by the rotation after the moons' tidal migration (:func:`spin_after_moons`).
     """
     rng = np.random.default_rng(seed)
     n = len(planets["a_au"])
@@ -240,9 +318,12 @@ def attach_moons(planets, components, seed=None, model: MoonModel = MoonModel(),
     t_eq0 = np.nan_to_num(t_eq0, nan=0.0)
     age = np.asarray(components["age_gyr"], dtype=float)[np.asarray(planets["component"])] if n else np.zeros(0)
     m = _draw(planets, rng, model, t_eq0)
-    keep, a_rp = _survive(m, planets, t_lock, age, model, derived) if len(m["planet"]) else (np.zeros(0, bool), np.zeros(0))
+    if len(m["planet"]):
+        keep, a_rp, a0_rp = _survive(m, planets, t_lock, age, model, derived)
+    else:
+        keep, a_rp, a0_rp = np.zeros(0, bool), np.zeros(0), np.zeros(0)
     m = {key: v[keep] for key, v in m.items()}
-    a_rp = a_rp[keep]
+    a_rp, a0_rp = a_rp[keep], a0_rp[keep]
     p = m["planet"].astype(np.int64)
     rp_km = np.asarray(planets["planet_radius"], dtype=float)[p] * EARTH_RADIUS_M / 1e3
     mp = np.asarray(planets["planet_mass"], dtype=float)[p] * EARTH_MASS_KG
@@ -260,7 +341,10 @@ def attach_moons(planets, components, seed=None, model: MoonModel = MoonModel(),
            "composition": np.where(m["icy"], "ice", "rock").astype(object),
            "flags": (np.asarray(planets["flags"])[p] | FLAG_MOON).astype(np.int32)}
     order = np.lexsort((res["a_rp"], res["planet"]))
-    return {key: v[order] for key, v in res.items()}
+    res = {key: v[order] for key, v in res.items()}
+    if update_spin and "rotation_h" in planets:
+        planets["rotation_h"] = spin_after_moons(planets, res, a0_rp[order], age, t_lock, model, derived)
+    return res
 
 
 def _n_components(components):

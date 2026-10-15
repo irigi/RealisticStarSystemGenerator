@@ -51,7 +51,7 @@ def test_earth_analogues_and_the_moon():
     # A Moon-mass moon formed at 3.8 Earth radii ends near 50 Earth radii after 4.6 Gyr.
     cand = {"planet": np.array([0]), "kind": np.array(["impact"], dtype=object), "mass": np.array([0.0123]),
             "a_rp": np.array([3.8]), "incl": np.array([0.05]), "icy": np.array([False])}
-    keep, a = moons._survive(cand, pl, pl["t_lock_gyr"], np.full(20000, 4.6), moons.MoonModel(), dv.DerivedModel())
+    keep, a, _ = moons._survive(cand, pl, pl["t_lock_gyr"], np.full(20000, 4.6), moons.MoonModel(), dv.DerivedModel())
     assert keep[0] and 40 < a[0] < 70
 
 
@@ -89,3 +89,30 @@ def test_resonant_moons_are_tidally_heated():
     # Io-like moons (inner, resonant, ~0.015 Earth masses) dissipate ~1e13-1e15 W.
     io = res & (m["a_rp"] < 8) & (m["mass"] > 0.005)
     assert 1e12 < np.median(m["tidal_heating_w"][io]) < 1e16
+
+
+def test_moons_slow_the_planet_spin():
+    # Earth analogues with the Moon: 5 h after the impact, the Moon's outward migration takes
+    # angular momentum from the spin (Earth: ~16 h with the Moon at ~50 Earth radii, 24 h at 60).
+    pl, comp = _planets(20000, 1.0, 1.0, 1.0, lost=True)
+    pl["rotation_h"] = np.full(20000, 3.0)
+    pl["spin"] = np.zeros(20000, np.int8)
+    before = pl["rotation_h"].copy()
+    m = moons.attach_moons(pl, comp, seed=2)
+    with_moon = np.zeros(20000, bool)
+    with_moon[m["planet"]] = True
+    assert np.array_equal(pl["rotation_h"][~with_moon], before[~with_moon])
+    moonlike = m["planet"][(m["mass"] > 0.009) & (m["mass"] < 0.016)]
+    assert 10.0 < np.median(pl["rotation_h"][moonlike]) < 40.0
+    # Heavier moons reach the double-synchronous state (planet day = month, Pluto-Charon).
+    heavy = (m["mass"] > 0.025)
+    assert np.allclose(pl["rotation_h"][m["planet"][heavy]], m["period"][heavy] * 24.0, rtol=0.05)
+    # The spin never falls below the moon's orbital rate.
+    assert (pl["rotation_h"][m["planet"]] <= m["period"] * 24.0 + 1e-6).all()
+    # Jupiter's spin barely changes (more for the rare systems with heavy inner moons).
+    pl, comp = _planets(2000, 5.2, 317.8, 11.2)
+    pl["rotation_h"] = np.full(2000, 10.0)
+    pl["spin"] = np.zeros(2000, np.int8)
+    moons.attach_moons(pl, comp, seed=3)
+    assert np.median(pl["rotation_h"]) == pytest.approx(10.0, rel=0.01)
+    assert (pl["rotation_h"] < 13.0).all() and (pl["rotation_h"] >= 10.0).all()
