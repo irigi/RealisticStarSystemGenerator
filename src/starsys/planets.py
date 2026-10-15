@@ -141,6 +141,7 @@ def attach_planets(systems, components, seed=None, *, params: hmc.HMCParams | No
                    short: sh.ShortPeriodModel | None = DEFAULT_SHORT,
                    derived: dv.DerivedModel | None = DEFAULT_DERIVED,
                    metallicity: MetallicityModel | None = DEFAULT_METALLICITY, age: str = "star",
+                   temperate_bare_fraction: float = 0.0,
                    amd_pair_criterion: str = "hill", rv_masses: bool = True) -> dict[str, np.ndarray]:
     """Draw planets for every component of every system.
 
@@ -176,6 +177,13 @@ def attach_planets(systems, components, seed=None, *, params: hmc.HMCParams | No
     metallicity
         [Fe/H] dependence of the inner planets (:class:`starsys.inner.metallicity.MetallicityModel`,
         Petigura+2018); ``None`` for HM-C's metallicity-independent field average.
+    temperate_bare_fraction
+        Setting (B16): fraction of temperate small planets born without an H/He envelope (rocky),
+        see :func:`strip_temperate`. 0 (default) keeps HM-C's radius model, in which every planet
+        starts with an envelope: eta-Earth (0.5-1.5 Re, conservative HZ, 4800-6300 K) 0.10, as
+        photoevaporation-aware estimates (Neil & Rogers 2020). 0.5 gives 0.22, 1 gives 0.33
+        (Bryson+2021's lower-bound model: 0.37 +0.48 -0.21); heavier cores stay above 1.5 Re
+        even when bare.
     age
         ``"star"`` (default): envelope retention uses each star's age, through the effective age
         :func:`photoevaporation_age`, normalised so that field stars keep HM-C's Kepler-fitted
@@ -227,7 +235,7 @@ def attach_planets(systems, components, seed=None, *, params: hmc.HMCParams | No
         rows = np.broadcast_to(table[0], (len(host), len(fields(hmc.HMCParams))))
         cat_id = np.zeros(len(host), dtype=np.int32)
     if mdwarf is not None:
-        rows = adjust_params(rows, mass, teff, mdwarf)
+        rows = adjust_params(rows, mass, teff, mdwarf, rng)
         is_m = mdwarf_weight(teff, mdwarf) > 0
     else:
         is_m = np.zeros(len(host), dtype=bool)
@@ -324,6 +332,8 @@ def attach_planets(systems, components, seed=None, *, params: hmc.HMCParams | No
         pl["period"] = a_au_to_period(a_au, host_mass)
         _reinflate_giants(k, pl, a_old, a_au, h)
     _system_plane(k, pl, planes, a_au)
+    if temperate_bare_fraction > 0:
+        strip_temperate(pl, a_au, h["luminosity"][k], temperate_bare_fraction, rng)
     comp = host[k]
     result = {
         "system": sys_of_host[k],
@@ -344,6 +354,32 @@ def attach_planets(systems, components, seed=None, *, params: hmc.HMCParams | No
         result["flags"] = result["flags"] | extra.pop("hz_flags")
         result.update(extra)
     return result
+
+
+TEMPERATE_MAX_INSOLATION = 2.0  # Earth fluxes: the optimistic HZ inner edge of Sun-like stars (~1.8) and colder
+TEMPERATE_MAX_MASS = 10.0  # Earth masses: cores above the critical mass accrete envelopes regardless
+
+
+def strip_temperate(pl, a_au, luminosity, fraction, rng) -> None:
+    """Born-bare setting (B16), in place: each planet that still has an envelope, receives less
+    than ``TEMPERATE_MAX_INSOLATION`` (host luminosity / a^2) and started below
+    ``TEMPERATE_MAX_MASS`` loses it with probability ``fraction``, as in HM-C's photoevaporation:
+    mass minus the envelope (10% for these masses), pure-silicate radius with 5% scatter.
+
+    HM-C starts every planet with an H/He envelope, so temperate small planets are mostly
+    1.5-3 Earth-radius sub-Neptunes. Whether they formed rocky (inside the water and gas-poor
+    inner disk) or with envelopes is not measured at these periods: Kepler's radius
+    distribution is well determined only inside ~100 d for Sun-like stars, and published
+    eta-Earth values span ~0.05 (Neil & Rogers 2020) to ~0.6 (Bryson+2021)."""
+    s = np.asarray(luminosity, dtype=float) / np.asarray(a_au, dtype=float) ** 2
+    cand = (~pl["lost_envelope"] & (s < TEMPERATE_MAX_INSOLATION) & (pl["mass_init"] < TEMPERATE_MAX_MASS)
+            & (rng.random(len(s)) < fraction))
+    m = pl["mass_init"][cand]
+    core = m - np.array([hmc.envelope_mass(x) for x in m])
+    r = np.array([hmc.radius_pure_silicate_seager2007(x) for x in core])
+    pl["planet_mass"][cand] = core
+    pl["planet_radius"][cand] = r * (1.0 + 0.05 * rng.normal(size=len(r)))
+    pl["lost_envelope"][cand] = True
 
 
 def _short_period(kk, p, idx, planes, h, rows, weight, limits, short: sh.ShortPeriodModel, rng, d_feh=None):

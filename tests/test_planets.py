@@ -226,7 +226,7 @@ def test_rv_mass_rescaling():
     assert rv_masses.target_mass(5.0) == pytest.approx(1.74 * 5.0**1.58)  # Otegi+2020
     assert rv_masses.target_mass(9.45) == pytest.approx(95.2, rel=1e-6)  # Saturn
     systems, comp = _sun_like(3000)
-    kw = dict(seed=3, params=HMCParams(), giants=None, small=None, derived=None)
+    kw = dict(seed=3, params=HMCParams(), giants=None, small=None, derived=None, short=None)  # short: spacing uses masses
     a = planets.attach_planets(systems, comp, rv_masses=False, **kw)
     b = planets.attach_planets(systems, comp, **kw)
     assert np.array_equal(a["planet_radius"], b["planet_radius"])
@@ -341,3 +341,28 @@ def test_metallicity_dependence():
         pl = planets.attach_planets(systems, comp, **kw)
         hot.append(np.sum((pl["period"] < 10) & (pl["planet_radius"] > 1.7) & (pl["planet_radius"] < 4)))
     assert hot[1] > 1.5 * hot[0]
+
+
+def test_scenario_settings():
+    from dataclasses import replace
+
+    from starsys.outer import small as sp
+
+    # Born-bare temperate planets (B16): with fraction 1 no temperate small planet keeps an envelope.
+    systems, comp = _sun_like(3000)
+    kw = dict(seed=8, params=HMCParams(), giants=None, derived=None, binaries=None)
+    a = planets.attach_planets(systems, comp, **kw)
+    b = planets.attach_planets(systems, comp, temperate_bare_fraction=1.0, **kw)
+    temperate = (1.0 / b["a_au"] ** 2 < planets.TEMPERATE_MAX_INSOLATION) & (b["mass_init"] < planets.TEMPERATE_MAX_MASS)
+    assert temperate.any() and b["lost_envelope"][temperate].all()
+    assert (b["planet_radius"][temperate] < 2.3).all()  # a bare 10 Earth-mass rock: ~2.0 Re
+    assert np.array_equal(a["period"], b["period"])
+    # Wide-orbit small planets (B15): the factor multiplies the rate beyond 4 snow-line radii.
+    wide = replace(planets.DEFAULT_SMALL, wide_factor=10.0)
+    pa = planets.attach_planets(systems, comp, **kw)
+    pb = planets.attach_planets(systems, comp, small=wide, **kw)
+    far = 4.0 * 2.7
+    na = np.sum((pa["model"] == "outer_small") & (pa["a_au"] > far))
+    nb = np.sum((pb["model"] == "outer_small") & (pb["a_au"] > far))
+    assert nb > 3 * na > 0
+    assert sp.SmallPlanetModel().wide_factor == 1.0

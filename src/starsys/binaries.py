@@ -104,6 +104,9 @@ class BinaryModel:
     cb_radius_bins: tuple = ((4.0, 6.0), (6.0, 8.0), (8.0, 10.0))
     cb_rates: tuple = (0.46, 0.11, 0.21)
     cb_p_bin_min: float = 7.0  # days
+    # Setting (B22): multiplier of the empirical rates (capped at 1 per bin). They rest on ~10
+    # Kepler planets (uncertain by ~3x): 1/3-3 spans the range; 1 is Armstrong+2014.
+    cb_rate_factor: float = 1.0
     cb_period_ratio: tuple = (1.0, 2.5)  # P / P_crit, log-uniform
     cb_ecc_sigma: float = 0.03
     cb_mass_scatter_dex: float = 0.3
@@ -373,7 +376,7 @@ def draw_circumbinary(m_pair, a_min, a_max, p_bin, rng, model: BinaryModel = Bin
     host, radius = [], []
     ok = p_bin >= model.cb_p_bin_min
     for (lo, hi), rate in zip(model.cb_radius_bins, model.cb_rates):
-        has = np.flatnonzero(ok & (rng.random(n) < rate))
+        has = np.flatnonzero(ok & (rng.random(n) < min(rate * model.cb_rate_factor, 1.0)))
         host.append(has)
         radius.append(lo + rng.random(len(has)) * (hi - lo))
     host, radius = np.concatenate(host), np.concatenate(radius)

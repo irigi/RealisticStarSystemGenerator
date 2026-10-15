@@ -19,9 +19,14 @@ the following change, phased in linearly in Teff between ``teff_hi`` and ``teff_
 
 Early M (0.35-0.65 Msun): the first four are fitted to Dressing & Charbonneau (2015)
 Table 4 (Kepler, median 0.5 Msun, revised stellar radii). Score (sum of squared
-log-space z) 24 over 33 cells, against 70 for plain HM-C. The four parameters are
-degenerate (fits from different starts score within noise of each other at different
-points); the data pin down the occurrence they produce, not each parameter. Integrated rates fall
+log-space z) ~18-23 over 33 cells, against 70 for plain HM-C. The four parameters are
+degenerate: the data pin down the occurrence they produce, not each parameter. So, like
+HM-C's own posterior, they are drawn per host (``sample_posterior``) from
+:data:`EARLY_M_POSTERIOR`: the parameter sets of a 512-point Sobol scan of the box
+(1.39-2.06, -0.22-1.18, 0.07-0.48, 1.67-2.13 d; 2026-10-15, backlog B5) that score within
+4.72 (68% for four parameters) of the best, each re-scored on two independent star samples.
+The scalar fields are the best set; they are used without a generator, for the HM-C edge
+table of :mod:`starsys.outer.small`, and as the anchor of the mid-to-late M interpolation. Integrated rates fall
 between Hsu, Ford & Terrien (2020)'s two priors, close to their baseline (Dirichlet).
 f_swp is already 1 at these colours (HM-C's linear f_swp clips at bp-rp ~0.94),
 consistent with Hsu+2020's finding that most early M dwarfs host planets.
@@ -53,19 +58,20 @@ from .hmc import I_FBARE, I_FMED, I_FSLOPE, I_LALPHA, I_LRC, I_MUM, I_PMIN
 
 @dataclass(frozen=True)
 class MDwarfModel:
-    # Early M, fitted to DC15.
-    d_log_rate_clusters: float = 1.8
-    d_mean_ln_mass: float = 0.38
-    f_bare: float = 0.26
-    min_period: float = 1.51
+    # Early M, fitted to DC15 (best of EARLY_M_POSTERIOR; drawn per host when sample_posterior).
+    d_log_rate_clusters: float = 1.77
+    d_mean_ln_mass: float = 0.48
+    f_bare: float = 0.27
+    min_period: float = 1.84
     d_log_alpha_pret: float = 0.0
+    sample_posterior: bool = True
     # Mid-to-late M. mass_slope is a prior (the data do not distinguish 0-1.5);
     # f_bare_late and min_period_late are fitted to Ment & Charbonneau (2023).
     mass_pivot: float = 0.5
     mass_slope: float = 1.0
     mass_late: float = 0.15
     f_bare_late: float = 0.9
-    min_period_late: float = 0.75
+    min_period_late: float = 0.9
     # Phase-in below the HM-C domain.
     teff_hi: float = 4000.0
     teff_lo: float = 3700.0
@@ -79,22 +85,75 @@ def mdwarf_weight(teff, model: MDwarfModel) -> np.ndarray:
     return np.clip((model.teff_hi - np.asarray(teff, dtype=float)) / (model.teff_hi - model.teff_lo), 0.0, 1.0)
 
 
-def adjust_params(rows: np.ndarray, mass, teff, model: MDwarfModel) -> np.ndarray:
-    """Return a copy of the per-star HM-C parameter rows with the M-dwarf changes applied."""
+def adjust_params(rows: np.ndarray, mass, teff, model: MDwarfModel, rng=None) -> np.ndarray:
+    """Return a copy of the per-star HM-C parameter rows with the M-dwarf changes applied.
+
+    With ``rng`` and ``model.sample_posterior``, the early-M parameters are drawn per host from
+    :data:`EARLY_M_POSTERIOR`; otherwise the model's scalar values are used."""
     rows = np.array(rows, dtype=float, copy=True)
     mass = np.asarray(mass, dtype=float)
     w = mdwarf_weight(teff, model)
-    rows[:, I_LRC] += w * model.d_log_rate_clusters
+    if rng is not None and model.sample_posterior:
+        d_lrc, d_mu, f_bare, p_early = np.asarray(EARLY_M_POSTERIOR)[rng.integers(len(EARLY_M_POSTERIOR), size=len(mass))].T
+    else:
+        d_lrc, d_mu, f_bare, p_early = model.d_log_rate_clusters, model.d_mean_ln_mass, model.f_bare, model.min_period
+    rows[:, I_LRC] += w * d_lrc
     rows[:, I_LALPHA] += w * model.d_log_alpha_pret
     late = np.clip((model.mass_pivot - mass) / (model.mass_pivot - model.mass_late), 0.0, 1.0)
-    rows[:, I_FBARE] = w * (model.f_bare + (model.f_bare_late - model.f_bare) * late)
-    p_min = model.min_period + (model.min_period_late - model.min_period) * late
+    rows[:, I_FBARE] = w * (f_bare + (model.f_bare_late - f_bare) * late)
+    p_min = p_early + (model.min_period_late - p_early) * late
     rows[:, I_PMIN] = rows[:, I_PMIN] + w * (p_min - rows[:, I_PMIN])
-    rows[:, I_MUM] += w * model.d_mean_ln_mass + model.mass_slope * np.minimum(0.0, np.log(mass / model.mass_pivot))
+    rows[:, I_MUM] += w * d_mu + model.mass_slope * np.minimum(0.0, np.log(mass / model.mass_pivot))
     low = mass < model.substellar_mass
     rows[low, I_FSLOPE] = 0.0
     rows[low, I_FMED] = (mass[low] / model.substellar_mass) ** model.disk_mass_slope
     return rows
+
+
+# Early-M parameter sets (d_log_rate_clusters, d_mean_ln_mass, f_bare, min_period) that fit DC15
+# within 68% of the best (see the module docstring), best first.
+EARLY_M_POSTERIOR = (
+    (1.77, 0.48, 0.27, 1.84),
+    (1.67, 0.31, 0.20, 1.92),
+    (1.65, 0.50, 0.30, 1.77),
+    (1.91, 0.73, 0.43, 1.92),
+    (1.89, 0.23, 0.29, 1.87),
+    (1.82, 0.40, 0.36, 2.03),
+    (1.86, 0.83, 0.24, 1.91),
+    (1.71, 0.69, 0.40, 2.05),
+    (1.70, 0.91, 0.37, 1.97),
+    (1.94, 0.85, 0.34, 2.10),
+    (1.81, 0.18, 0.12, 1.95),
+    (1.53, 0.58, 0.41, 1.86),
+    (1.97, 0.25, 0.16, 2.05),
+    (1.79, 0.28, 0.34, 1.67),
+    (1.98, 0.54, 0.23, 2.13),
+    (1.44, 0.10, 0.23, 1.68),
+    (1.63, -0.10, 0.24, 1.82),
+    (1.76, 0.78, 0.49, 1.74),
+    (1.62, 0.38, 0.32, 2.12),
+    (2.06, 0.56, 0.33, 1.95),
+    (1.39, 0.71, 0.38, 1.83),
+    (1.74, -0.22, 0.10, 1.80),
+    (1.50, -0.02, 0.12, 1.90),
+    (1.84, 1.18, 0.39, 1.99),
+    (2.05, 1.04, 0.42, 2.07),
+    (1.41, 0.40, 0.15, 1.73),
+    (1.52, 0.68, 0.19, 1.76),
+    (1.66, 0.99, 0.27, 2.15),
+    (1.76, -0.12, 0.33, 1.89),
+    (1.60, 0.61, 0.28, 1.57),
+    (1.90, 0.13, 0.06, 1.78),
+    (1.57, 0.08, 0.31, 1.93),
+    (1.80, -0.20, 0.20, 2.08),
+    (1.88, 1.14, 0.47, 1.81),
+    (1.96, -0.27, 0.14, 1.97),
+    (1.47, 0.78, 0.25, 2.02),
+    (2.16, 0.72, 0.30, 2.07),
+    (1.63, 0.61, 0.07, 1.87),
+    (1.57, 0.98, 0.48, 1.70),
+    (2.08, 0.03, 0.15, 2.04),
+)
 
 
 # --- observational targets --------------------------------------------------------

@@ -20,7 +20,10 @@ the microlensing convention). For a typical lens (0.5 Msun at 6 kpc, source at 8
 Einstein radius ~2.5 au) the sensitive range s ~ 0.5-2 corresponds to ~1-4 a_sl. The
 rate is used flat out to ``a_max`` = 10 a_sl (the Solar System's ice giants sit at 7-11
 a_sl). Poleski+2021 (OGLE, s = 2-6) find more wide-orbit planets than this (1.4 +0.9 -0.6
-per star with q > 1e-4, rising with s); see :mod:`starsys.validation.small`.
+per star with q > 1e-4, rising with s); see :mod:`starsys.validation.small`. The setting
+``wide_factor`` multiplies the rate beyond 4 a_sl (default 1; ~30 matches Poleski's total, but
+here only planets below 30 Earth masses are raised: a world with many Neptunes and smaller
+planets far out).
 
 Zang+2025's main-text numbers are per dex of q and per dex of s (their eq. 1 integrates to
 the quoted 0.65 per star over -5.2 < log q < -1.5). Their sensitivity omits the
@@ -116,6 +119,10 @@ class SmallPlanetModel:
     snow_line_au: float = 2.7  # at 1 Msun, proportional to M*
     ml_a_range: tuple = (1.0, 4.0)  # probed by microlensing
     a_max: float = 10.0
+    # Setting (B15): rate multiplier beyond ml_a_range[1] (4 a_sl), where microlensing stops
+    # measuring. 1 (default): flat in ln a, as Zang+2025 / Suzuki+2016 near s ~ 1. Poleski+2021's
+    # wide-orbit rate is ~30x the model's total (giants included); 30 is that end of the range.
+    wide_factor: float = 1.0
     ml_host_mass_range: tuple = (0.1, 1.0)
     # Planet masses (Earth masses).
     m_min: float = 0.1
@@ -265,6 +272,7 @@ class _Hosts:
         self.u_in = np.log(a_in)
         self.u_sl = np.log(self.a_sl)
         self.u_out = np.log(model.a_max * self.a_sl)
+        self.u_wide = np.log(model.ml_a_range[1] * self.a_sl)
         n_in, mu_in, s_in = anchors_in
         self.p_in = (np.log(np.maximum(n_in, 1e-12) / (s_in * math.sqrt(2 * math.pi))), mu_in, s_in)
         self.p_out = anchors_out
@@ -295,8 +303,11 @@ class _Hosts:
         def take(v):
             v = np.asarray(v)[idx]
             return v[:, None] if extra_dim else v
-        return _bridge(u, take(self.u_in), take(self.u_sl), *(take(v) for v in self.p_in),
-                       *(take(v) for v in self.p_out))
+        c, mu, sd = _bridge(u, take(self.u_in), take(self.u_sl), *(take(v) for v in self.p_in),
+                            *(take(v) for v in self.p_out))
+        if self.model.wide_factor != 1.0:
+            c = c + math.log(self.model.wide_factor) * (u > take(self.u_wide))
+        return c, mu, sd
 
     def cum_at(self, u, idx):
         """Expected number of planets between ln a(P_max) and ln a = u (clipped to the grid)."""

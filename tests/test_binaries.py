@@ -72,3 +72,15 @@ def test_close_binaries_lose_planets(population):
     close = ms & (st["a_near"] < 1.0)
     assert has[single].mean() > 0.5
     assert has[close].sum() == 0
+
+
+def test_circumbinary_rate_setting():
+    from dataclasses import replace
+
+    n = 20_000
+    args = (np.full(n, 1.8), np.full(n, 0.2), np.full(n, 50.0), np.full(n, 20.0))
+    counts = [len(bn.draw_circumbinary(*args, np.random.default_rng(1), replace(bn.BinaryModel(), cb_rate_factor=f))
+                  ["host"]) for f in (1 / 3, 1.0)]
+    # At most one planet per binary: P(any) = 1 - prod(1 - f * rate) over the radius bins.
+    for f, c in zip((1 / 3, 1.0), counts):
+        assert c / n == pytest.approx(1 - np.prod(1 - f * np.array(bn.BinaryModel().cb_rates)), rel=0.05)

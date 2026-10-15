@@ -140,7 +140,7 @@ def report(model, early, late):
 EARLY_FIT = ("d_log_rate_clusters", "d_mean_ln_mass", "f_bare", "min_period")
 # mass_slope is fixed by prior (universal planet-to-star mass ratio): the Ment & Charbonneau
 # score is flat in it. f_bare_late is capped at 0.9 since sub-Neptunes exist around mid-M.
-LATE_GRID = {"f_bare_late": (0.6, 0.7, 0.8, 0.9), "min_period_late": (0.6, 0.75, 0.9)}
+LATE_GRID = {"f_bare_late": (0.6, 0.7, 0.8, 0.9), "min_period_late": (0.6, 0.75, 0.9, 1.05, 1.2)}
 
 
 def fit_early(sample, base: md.MDwarfModel, starts):
@@ -150,7 +150,7 @@ def fit_early(sample, base: md.MDwarfModel, starts):
     n = len(sample[1]["mass"])
 
     def score(x):
-        m = replace(base, **dict(zip(EARLY_FIT, map(float, x))))
+        m = replace(base, sample_posterior=False, **dict(zip(EARLY_FIT, map(float, x))))
         if not (0.0 <= m.f_bare <= 1.0 and 0.3 <= m.min_period <= 3.0):
             return 1e9
         return np.nansum(dc15_residuals(dc15_grid(run(sample, m), n)) ** 2)
