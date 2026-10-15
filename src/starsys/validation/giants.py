@@ -335,6 +335,26 @@ def report_architecture(cls_pl, model: gp.GiantModel, reps: int):
           f"eccentricity prior does not depend on multiplicity)")
 
 
+def report_radii():
+    """Radii of cool transiting giants (insolation < 150 Earth's, Thorngren+2016's cut; RV masses better than
+    30%) in the NASA archive against the model at each planet's mass, insolation and host age."""
+    t = pd.read_csv(CATALOGS_DIR / "observational" / "nasa_pscomppars.csv", comment="#",
+                    usecols=["discoverymethod", "pl_bmasse", "pl_bmasseerr1", "pl_bmassprov", "pl_rade", "pl_insol",
+                             "st_age"])
+    t = t[(t["discoverymethod"] == "Transit") & np.isfinite(t["pl_bmasse"]) & np.isfinite(t["pl_rade"])
+          & (t["pl_insol"] < 150) & (t["pl_bmassprov"] == "Mass") & (t["pl_bmasseerr1"] / t["pl_bmasse"] < 0.3)]
+    rng = np.random.default_rng(12)
+    print("\nCool transiting giants (insolation < 150), median radius in Earth radii (16-84%):")
+    for lo, hi in ((30, 60), (60, 120), (120, 300), (300, 1000), (1000, 4000)):
+        x = t[(t["pl_bmasse"] >= lo) & (t["pl_bmasse"] < hi)]
+        age = np.clip(x["st_age"].fillna(4.5).to_numpy(), 0.3, 10.0)
+        r = np.concatenate([gp.giant_radius(x["pl_bmasse"].to_numpy(), gp.SOLAR_FLUX_CGS * x["pl_insol"].to_numpy(),
+                                            rng, age)[0] for _ in range(50)])
+        _row(f"{lo}-{hi} Me ({len(x)} planets)", np.median(r),
+             f"{x['pl_rade'].median():.2f} ({x['pl_rade'].quantile(0.16):.1f}-{x['pl_rade'].quantile(0.84):.1f})",
+             f"model 16-84%: {np.percentile(r, 16):.1f}-{np.percentile(r, 84):.1f}")
+
+
 def report_hmc_overlap(model: gp.GiantModel):
     """Inside 3-300 d, planets below 10 Earth radii come from HM-C; compare its M >= 30 Me planets with CLS.
 
@@ -423,6 +443,7 @@ def main() -> None:
         print("Calibrated:", {k: getattr(model, k) for k in ("norm", "dispersion", "hj_rate", "hj_outer_boost")}, "\n")
     report(stars, cls_pl, model, args.reps)
     report_architecture(cls_pl, model, args.reps)
+    report_radii()
     report_hmc_overlap(model)
     report_howard()
     report_population()

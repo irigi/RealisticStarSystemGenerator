@@ -185,6 +185,22 @@ def test_giant_samplers_match_their_densities():
     assert ((a >= 1) & (a < 5)).mean() == pytest.approx(frac, abs=0.005)
 
 
+def test_giant_radii_from_evolution_models():
+    from starsys.outer import giants as gp
+
+    f = gp.SOLAR_FLUX_CGS
+    jup = gp.giant_radius_mean(317.8, f / 5.2**2, 37.0, 4.6) / gp.RJ_EARTH  # Thorngren+2016's Jupiter
+    assert jup == pytest.approx(0.978, abs=0.03)  # mean radius
+    assert gp.giant_radius_mean(95.2, f / 9.54**2, 27.0, 4.6) == pytest.approx(9.14, rel=0.06)  # Saturn
+    young, old = gp.giant_radius_mean(np.array([317.8, 317.8]), f, None, np.array([0.3, 4.5]))
+    assert young > 1.05 * old  # contraction with age
+    rich, poor = gp.giant_radius_mean(np.array([317.8, 317.8]), f, np.array([100.0, 10.0]))
+    assert rich < 0.95 * poor  # heavy elements make smaller planets
+    assert gp.giant_radius_mean(30.0, f) == pytest.approx(3.9 * (30 / 17) ** 0.514, rel=0.01)  # sub-Saturn anchor
+    hot = gp.giant_radius_mean(317.8, 1e3 * f)
+    assert hot == pytest.approx(2.45 * 317.8**-0.039 * (1e3 * f) ** 0.094, rel=1e-9)  # Weiss+2013 inflation
+
+
 def test_intermediate_mass_hosts_have_giants_near_800_days():
     from starsys.outer import giants as gp
     from starsys.units import a_au_to_period

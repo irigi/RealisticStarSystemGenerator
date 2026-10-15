@@ -101,10 +101,23 @@ Architecture:
 - Overlap with HM-C: inside the host's HM-C period window (P_min-300 d), giant-model
   planets below HM-C's maximum radius (10 Earth radii) are not drawn, as HM-C covers them.
 
-Radius: cold giants follow a mass-radius relation through Neptune, Saturn and
-Jupiter, R = 3.9 (M/17)^0.514 below ~140 Earth masses and R = 11.2 (M/318)^-0.04 above.
-Hot giants above 150 Earth masses are inflated per Weiss+2013 (R = 2.45 M^-0.039
-F^0.094, cgs flux), whichever is larger, with 5% lognormal scatter.
+Radius: evolution models of Fortney+2007 (Tables 2-4: H/He planets with a heavy-element
+core, by age, insolation, core mass and planet mass; :mod:`starsys.outer.fortney07`), with
+each planet's heavy-element mass from Thorngren+2016's fit to cool transiting giants,
+M_z = 57.9 (M / MJup)^0.61 Earth masses, scattered by their intrinsic factor of 1.82
+(0.26 dex) and capped at 90% of the planet's mass, and the host's age. The spread in heavy
+elements gives the spread in radius. Jupiter-like planets (37 Earth masses of heavy elements,
+Thorngren+2016's Jupiter) come out at 0.96 RJ at 4.6 Gyr (mean radius 0.98), Saturn-like ones
+at 8.7 Earth radii (mean radius 9.1). Sub-Saturns are more metal-rich than the fit's low end
+implies: with it, cool transiting planets of 30-60 Earth masses would be 8.8 Earth radii
+against 7.0 measured (NASA archive), so below 120 Earth masses the radius at 4.5 Gyr and the
+Earth's insolation is pinned to the Neptune-Saturn relation R = 3.9 (M/17)^0.514 and the
+evolution models only supply the changes with age, insolation and heavy elements. Measured
+cool giants (insolation < 150) have median radii 7.0 / 8.7 / 10.9 / 11.6 / 11.9 Earth radii
+at 30-60 / 60-120 / 120-300 / 300-1000 / 1000-4000 Earth masses; the model gives 6.6 / 8.2 /
+11.1 / 11.5 / 11.7 (:mod:`starsys.validation.giants`). Hot giants above 150 Earth masses are inflated per
+Weiss+2013 (R = 2.45 M^-0.039 F^0.094, cgs flux) when that is larger, as the anomalous
+inflation of hot Jupiters is not in the evolution models.
 """
 
 from __future__ import annotations
@@ -308,28 +321,102 @@ def expected_wide(mass, model: GiantModel = GiantModel()) -> np.ndarray:
     return np.where(mass < model.min_host_mass, 0.0, lam)
 
 
-def giant_radius_mean(mass, flux_cgs) -> np.ndarray:
-    """Radius (Earth radii) of a giant of the given mass (Earth masses) and bolometric flux, without scatter."""
+RJ_EARTH = 71492.0 / 6378.1  # Jupiter's equatorial radius (Fortney+2007's unit) in Earth radii
+THORNGREN_MZ = (57.9, 0.61)  # heavy-element mass (Earth masses) = 57.9 (M / MJup)^0.61 (Thorngren+2016)
+THORNGREN_SIGMA_DEX = 0.26  # intrinsic spread, a factor 1.82
+
+
+@lru_cache(maxsize=1)
+def _fortney_interpolator():
+    """Linear interpolator of Fortney+2007's radii in (log age, log insolation, core mass, log mass).
+
+    Missing entries (core heavier than the planet) are extrapolated along the core axis from the
+    last two valid ones, floored at 0.3 RJ; the unstable coreless 17 Earth-mass planet at 0.02 au
+    takes the 28 Earth-mass value. Only planets above 30 Earth masses with heavy-element masses
+    below 90% of the planet's mass are evaluated, so the extrapolated corners carry little weight.
+    """
+    from scipy.interpolate import RegularGridInterpolator
+
+    from . import fortney07 as f7
+
+    r = f7.RADIUS_RJ.copy()
+    r[:, :, 0, 0] = np.where(np.isnan(r[:, :, 0, 0]), r[:, :, 0, 1], r[:, :, 0, 0])
+    for t in range(r.shape[0]):
+        for d in range(r.shape[1]):
+            for m in range(r.shape[3]):
+                col = r[t, d, :, m]
+                ok = np.flatnonzero(np.isfinite(col))
+                for c in np.flatnonzero(~np.isfinite(col)):
+                    if len(ok) >= 2:
+                        c0, c1 = ok[-2], ok[-1]
+                        slope = (col[c1] - col[c0]) / (f7.CORE_EARTH[c1] - f7.CORE_EARTH[c0])
+                        col[c] = max(col[c1] + slope * (f7.CORE_EARTH[c] - f7.CORE_EARTH[c1]), 0.3)
+                    else:
+                        col[c] = col[ok[-1]]
+    log_s = -2.0 * np.log10(f7.DIST_AU)  # insolation, Earth = 1
+    order = np.argsort(log_s)
+    grid = (np.log10(f7.AGES_GYR), log_s[order], f7.CORE_EARTH, np.log10(f7.MASS_MJ * 317.83))
+    return RegularGridInterpolator(grid, r[:, order], bounds_error=False, fill_value=None), grid
+
+
+def heavy_element_mass(mass, z=None) -> np.ndarray:
+    """Heavy-element mass (Earth masses) of giants of ``mass`` Earth masses (Thorngren+2016), with
+    standard-normal deviates ``z`` for the spread (mean relation without), capped at 90% of the mass."""
+    mass = np.asarray(mass, dtype=float)
+    mz = THORNGREN_MZ[0] * (mass / 317.83) ** THORNGREN_MZ[1]
+    if z is not None:
+        mz = mz * 10.0 ** (THORNGREN_SIGMA_DEX * np.asarray(z, dtype=float))
+    return np.minimum(mz, np.minimum(0.9 * mass, 100.0))
+
+
+SUB_SATURN_MASS = 120.0  # Earth masses
+
+
+def _sub_saturn_factor(mass) -> np.ndarray:
+    """Below 120 Earth masses: the empirical Neptune-Saturn relation R = 3.9 (M / 17)^0.514 over the
+    evolution-model radius of the mean heavy-element mass at 4.5 Gyr and the Earth's insolation (<= 1)."""
+    mass = np.asarray(mass, dtype=float)
+    low = mass < SUB_SATURN_MASS
+    if not low.any():
+        return np.ones_like(mass)
+    interp, grid = _fortney_interpolator()
+    m = mass[low]
+    pts = np.stack([np.full(len(m), np.log10(4.5)), np.zeros(len(m)), np.clip(heavy_element_mass(m), 0.0, 100.0),
+                    np.clip(np.log10(m), grid[3][0], grid[3][-1])], axis=-1)
+    ref = interp(pts) * RJ_EARTH
+    out = np.ones_like(mass)
+    out[low] = np.minimum(1.0, 3.9 * (m / 17.0) ** 0.514 / ref)
+    return out
+
+
+def giant_radius_mean(mass, flux_cgs, heavy=None, age_gyr=4.5) -> np.ndarray:
+    """Radius (Earth radii) of giants of ``mass`` Earth masses at bolometric flux ``flux_cgs``.
+
+    Evolution models of Fortney+2007 (age, insolation, heavy-element core) with the
+    heavy-element mass ``heavy`` (default: Thorngren+2016's mean relation); age and insolation
+    are held at the grid edges outside 0.3-4.5 Gyr and 0.011-2500 times the Earth's. Below 120
+    Earth masses the result is scaled to the empirical Neptune-Saturn relation at reference
+    conditions (:func:`_sub_saturn_factor`). Hot giants above 150 Earth masses take the larger
+    of that and the Weiss+2013 inflated radius.
+    """
     mass = np.asarray(mass, dtype=float)
     flux_cgs = np.asarray(flux_cgs, dtype=float)
-    # The two branches cross at 141 Earth masses.
-    cold = np.minimum(3.9 * (mass / 17.0) ** 0.514, 11.2 * (mass / 318.0) ** -0.04)
+    heavy = heavy_element_mass(mass) if heavy is None else np.asarray(heavy, dtype=float)
+    interp, grid = _fortney_interpolator()
+    pts = np.stack(np.broadcast_arrays(
+        np.clip(np.log10(np.maximum(age_gyr, 1e-3)), grid[0][0], grid[0][-1]),
+        np.clip(np.log10(np.maximum(flux_cgs / SOLAR_FLUX_CGS, 1e-30)), grid[1][0], grid[1][-1]),
+        np.clip(heavy, grid[2][0], grid[2][-1]), np.clip(np.log10(mass), grid[3][0], grid[3][-1])), axis=-1)
+    cold = interp(pts.reshape(-1, 4)).reshape(pts.shape[:-1]) * RJ_EARTH
+    cold = cold * _sub_saturn_factor(mass)
     hot = 2.45 * mass**-0.039 * flux_cgs**0.094
     return np.where(mass >= 150.0, np.maximum(cold, hot), cold)
 
 
-def giant_radius(mass, flux_cgs, rng) -> np.ndarray:
-    """Radius (Earth radii) of a giant of the given mass (Earth masses) and bolometric flux."""
-    r = giant_radius_mean(mass, flux_cgs)
-    return r * np.exp(0.05 * rng.normal(size=len(r)))
-
-
-def _giant_radius_scalar(m, flux_cgs, rng) -> float:
-    """:func:`giant_radius` for one planet."""
-    r = min(3.9 * (m / 17.0) ** 0.514, 11.2 * (m / 318.0) ** -0.04)
-    if m >= 150.0:
-        r = max(r, 2.45 * m**-0.039 * flux_cgs**0.094)
-    return r * math.exp(0.05 * rng.normal())
+def giant_radius(mass, flux_cgs, rng, age_gyr=4.5) -> tuple[np.ndarray, np.ndarray]:
+    """Radii (Earth radii) and heavy-element masses of giants, with Thorngren+2016's spread."""
+    heavy = heavy_element_mass(mass, rng.normal(size=len(mass)))
+    return giant_radius_mean(mass, flux_cgs, heavy, age_gyr), heavy
 
 
 # --- stability ------------------------------------------------------------------------
@@ -406,7 +493,7 @@ def _draw_orbit(component, mstar, rng, model: GiantModel):
 
 
 def draw_giants(mass, feh, luminosity, rng, model: GiantModel = GiantModel(), planes=None, window=None,
-                n_redraw: int = 20, a_limits=None) -> dict[str, np.ndarray]:
+                n_redraw: int = 20, a_limits=None, age_gyr=None) -> dict[str, np.ndarray]:
     """Draw giant planets for an array of host stars.
 
     Parameters
@@ -422,6 +509,8 @@ def draw_giants(mass, feh, luminosity, rng, model: GiantModel = GiantModel(), pl
     a_limits
         Optional (a_min, a_max) arrays per host (au): dynamical limits set by stellar
         companions. Giants drawn outside are removed; redraws must fall inside.
+    age_gyr
+        Host ages for the radii (default 4.5 Gyr).
 
     Returns
     -------
@@ -469,7 +558,8 @@ def draw_giants(mass, feh, luminosity, rng, model: GiantModel = GiantModel(), pl
             a[s] = draw_cold_separation(mass[host[s]], rng, model)
         else:
             a[s] = _draw_power(len(s), model.wide_a_index, *model.wide_a_range, rng)
-    r = giant_radius(m, SOLAR_FLUX_CGS * lum[host] / a**2, rng)
+    age = np.broadcast_to(np.asarray(4.5 if age_gyr is None else age_gyr, dtype=float), (n,))
+    r, heavy = giant_radius(m, SOLAR_FLUX_CGS * lum[host] / a**2, rng, age[host])
 
     def in_window(h, a_, r_):
         if window is None:
@@ -483,10 +573,11 @@ def draw_giants(mass, feh, luminosity, rng, model: GiantModel = GiantModel(), pl
         return (a_ < a_limits[0][h]) | (a_ > a_limits[1][h])
 
     ok = ~in_window(host, a, r) & ~outside(host, a)
-    host, component, m, a, e, r = host[ok], component[ok], m[ok], a[ok], e[ok], r[ok]
+    host, component, m, a, e, r, heavy = host[ok], component[ok], m[ok], a[ok], e[ok], r[ok], heavy[ok]
 
     # Placement: in order of decreasing mass per host, redrawing orbits that are unstable.
     keep = np.ones(len(host), dtype=bool)
+    moved = np.zeros(len(host), dtype=bool)
     counts = np.bincount(host, minlength=n)
     for h in np.flatnonzero(counts > 1):
         idx = np.flatnonzero(host == h)
@@ -495,9 +586,14 @@ def draw_giants(mass, feh, luminosity, rng, model: GiantModel = GiantModel(), pl
             for attempt in range(n_redraw + 1):
                 if attempt:
                     a[j], e[j] = _draw_orbit(component[j], mass[h], rng, model)
-                    r[j] = _giant_radius_scalar(m[j], SOLAR_FLUX_CGS * lum[h] / a[j] ** 2, rng)
-                    if in_window(h, a[j], r[j]) or outside(h, a[j]):
+                    moved[j] = True
+                    if outside(h, a[j]):
                         continue
+                    if window is not None and window[0][h] <= a_au_to_period(a[j], mass[h]) <= window[1][h]:
+                        # The radius decides whether HM-C covers this orbit (radii of the others: below).
+                        r[j] = giant_radius_mean(m[j], SOLAR_FLUX_CGS * lum[h] / a[j] ** 2, heavy[j], age[h])
+                        if r[j] < window[2][h]:
+                            continue
                 if _stable_with_neighbours(a[j], m[j], e[j], *occ, mass[h]):
                     pos = bisect.bisect_left(occ[0], a[j])
                     for lst, val in zip(occ, (a[j], m[j], e[j])):
@@ -505,6 +601,10 @@ def draw_giants(mass, feh, luminosity, rng, model: GiantModel = GiantModel(), pl
                     break
             else:
                 keep[j] = False
+    redo = np.flatnonzero(moved & keep)
+    if len(redo):
+        r[redo] = giant_radius_mean(m[redo], SOLAR_FLUX_CGS * lum[host[redo]] / a[redo] ** 2, heavy[redo],
+                                    age[host[redo]])
     host, component, m, a, e, r = host[keep], component[keep], m[keep], a[keep], e[keep], r[keep]
 
     k = len(host)

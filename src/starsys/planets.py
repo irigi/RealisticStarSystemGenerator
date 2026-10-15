@@ -603,7 +603,7 @@ def _add_pulsar_planets(result, systems, components, evolved: ev.EvolvedModel, r
 def _add_giants(k, pl, planes, inner, rows, mass, h, giants: gp.GiantModel, rng, limits=None):
     """Draw giants, reconcile the inner systems with them and merge; sorted by host position and period."""
     window = (rows[:, hmc.I_PMIN], rows[:, hmc.I_PMAX], rows[:, hmc.I_RMAX])
-    g = gp.draw_giants(mass, h["feh"], h["luminosity"], rng, giants, window=window, a_limits=limits)
+    g = gp.draw_giants(mass, h["feh"], h["luminosity"], rng, giants, window=window, a_limits=limits, age_gyr=h["age"])
 
     def drop(sel):
         return {key: v[~sel] for key, v in pl.items()}
