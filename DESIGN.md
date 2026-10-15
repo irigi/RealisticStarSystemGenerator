@@ -223,11 +223,29 @@ and returns a `Systems` bundle of the four tables; conditioned systems convert w
   the input format of the planned viewer, §3.7), and flat CSV/Parquet tables with the labels
   as extra columns.
 
-### 3.7 Viewer (planned, step 5)
+### 3.7 Viewer, galaxy and star map (phase 7; `starsys.ids`, `starsys.view`, `starsys.galaxy`, `starsys.realstars`)
 
-Interactive exploration of one system at a time: an orbit view at true separations with planets
-on their own size scale, and a hierarchical system map (stars → planets → moons) with
-information panels, reading the JSON of §3.6. Plan in `docs/NEXT_STEPS.md`.
+- **Stable IDs** (`starsys.ids`): stars are drawn in blocks of 64 whose seed is a hash of the
+  block address; planets and moons of one system alone from a seed derived from the block seed
+  and the star's index. So a system is a pure function of its ID (`S<master>-<k>` for the
+  sequence, `G<ix>.<iy>.<iz>-<j>` for a galaxy sector) and the star map can draw stars only,
+  then planets on click, identically.
+- **System viewer** (`python -m starsys.view`, PySide6): Pioneer-style hierarchical system map
+  (one row per star, planets left to right, moons below; procedural artwork from
+  `starsys.view.art`, deterministic per body, physics-guided palettes), an orbit view at true
+  separations (face-on, linear/log, habitable zones, time controls), a body tree and a
+  plain-language information panel; Previous/Next over a seed sequence, a real star's
+  conditioned realisations, or a star's galactic neighbours.
+- **Galaxy** (`starsys.galaxy`): empirical Milky Way density (Reid et al. 2019 spiral arms,
+  Bland-Hawthorn & Gerhard 2016 discs and bar, Juric et al. 2008 halo; local normalisation from
+  the 20-pc census), coordinate-seeded 10-pc sectors with Poisson counts, populations (ages,
+  [Fe/H]) by component and radius, young stars confined to the arms.
+- **Real stars** (`starsys.realstars`): the 20-pc census and the Hipparcos Survey are placed as
+  they are; a procedural system is removed exactly when those catalogues would contain it
+  (their selection functions), so the generated stars fill only what the catalogues miss.
+- **Star map** (`python -m starsys.view --galaxy`): pyqtgraph OpenGL; galaxy cloud far away,
+  real and procedural stars near the view centre (level of detail by sectors), search, click to
+  open a system (real stars run the conditioning of §3.5).
 
 ## 4. Phases
 
@@ -241,8 +259,8 @@ information panels, reading the JSON of §3.6. Plan in `docs/NEXT_STEPS.md`.
 6. **Real-star conditioning** + survey-sensitivity models (done 2026-10-15).
 7. **Learned components** (amortised conditioning, detection emulators) — added
    where profiling shows they pay off.
-8. **Usability** (plan steps 4–5): summaries and exports (done 2026-10-15), interactive viewer
-   (planned).
+8. **Usability** (plan steps 4–5): summaries and exports (done 2026-10-15), interactive
+   system viewer, procedural Milky Way and 3D star map (done 2026-10-15/16, §3.7).
 
 Each phase ends with a validation report (plots + metrics against data).
 
