@@ -104,22 +104,29 @@ def expected_number(p_max, teff, weight=1.0, usp_weight=None) -> np.ndarray:
     return per_bin[:, 0] * usp + per_bin[:, 1:].sum(axis=1) * weight
 
 
-def draw_short(mstar, rstar, teff, p_max, weight, rng, model: ShortPeriodModel = ShortPeriodModel(), usp_weight=None):
+def draw_short(mstar, rstar, teff, p_max, weight, rng, model: ShortPeriodModel = ShortPeriodModel(), usp_weight=None,
+               d_feh=None):
     """Candidates (unplaced): per-planet ``host``, ``period``, ``planet_radius``, ``planet_mass``.
 
     ``p_max``: per-host upper period (the host's HM-C P_min); ``weight``: per-host multiplier
     at 1-3 d (1 - M-dwarf weight, times the single-star boost); ``usp_weight``: the same for
-    the 0.5-1 d bin (default ``weight``)."""
+    the 0.5-1 d bin (default ``weight``); ``d_feh``: per-host [Fe/H] minus the Kepler field mean,
+    for the metallicity weights of :func:`starsys.inner.metallicity.short_weight` (None: none)."""
+    from .metallicity import HOT_BETA_R, short_weight
     mstar = np.asarray(mstar, dtype=float)
     n = len(mstar)
     lo, hi = HSU2019_P_EDGES[:-1], HSU2019_P_EDGES[1:]
     hosts, periods, radii = [], [], []
     r_cdf = np.cumsum(SHORT_RATES, axis=1)
+    if d_feh is not None:  # draw at the host's largest weight, then thin by radius
+        w_max = np.max([short_weight(np.full(n, r), d_feh) for r in (*HOT_BETA_R[:-1], 1e3)], axis=0)
     for b in range(len(lo)):
         top = np.minimum(p_max, hi[b])
         frac = np.clip(np.log(np.maximum(top, 1e-9) / lo[b]) / math.log(hi[b] / lo[b]), 0.0, 1.0)
         w = weight if b or usp_weight is None else usp_weight
         lam = frac * SHORT_RATES[b].sum() * np.asarray(w, dtype=float)
+        if d_feh is not None:
+            lam = lam * w_max
         if b == 0:
             lam = lam * teff_scale(teff)
         h = np.repeat(np.arange(n), rng.poisson(lam))
@@ -131,6 +138,9 @@ def draw_short(mstar, rstar, teff, p_max, weight, rng, model: ShortPeriodModel =
         k = np.minimum(k, len(HSU2019_R_EDGES) - 2)
         r = np.exp(np.log(HSU2019_R_EDGES[k]) + rng.random(len(h)) * np.log(HSU2019_R_EDGES[k + 1] /
                                                                               HSU2019_R_EDGES[k]))
+        if d_feh is not None:
+            ok = rng.random(len(h)) * w_max[h] < short_weight(r, d_feh[h])
+            h, p, r = h[ok], p[ok], r[ok]
         hosts.append(h)
         periods.append(p)
         radii.append(r)

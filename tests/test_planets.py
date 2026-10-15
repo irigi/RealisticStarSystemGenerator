@@ -246,7 +246,8 @@ def test_angles_refer_to_the_whole_system_invariable_plane():
     # In-plane components of the total angular momentum vanish for every host.
     for comp_xy in (np.sin(i) * np.cos(node), np.sin(i) * np.sin(node)):
         resid = np.bincount(pl["component"], weights=w * comp_xy, minlength=n)
-        assert np.abs(resid).max() < 1e-9 * np.bincount(pl["component"], weights=w, minlength=n).max()
+        # arccos near 1 resolves angles to ~1e-8 rad.
+        assert (np.abs(resid) <= 1e-7 * np.bincount(pl["component"], weights=w, minlength=n)).all()
     # Inner planets of giant hosts are tilted to the giant-dominated plane (Masuda+2020: ~12 deg).
     giant_host = np.isin(pl["component"], pl["component"][pl["model"] == "giant"])
     inner = giant_host & (pl["model"] == "hmc")
@@ -319,3 +320,24 @@ def test_small_planet_density_is_continuous_and_normalised():
     z = (yhi - mu[0]) / sd[0]  # upper truncation at 30 Earth masses (the lower one is negligible)
     truncated_mean = mu[0] - sd[0] * np.exp(-0.5 * z**2) / np.sqrt(2 * np.pi) / sp.ndtr(z)
     assert np.log(m[far]).mean() == pytest.approx(truncated_mean, abs=0.02)
+
+
+def test_metallicity_dependence():
+    from starsys.inner import metallicity as met
+
+    # At the Kepler field mean nothing changes; the short-period weights average to 1 over the field.
+    m = met.MetallicityModel()
+    rows = np.tile(HMCParams().as_array(), (3, 1))
+    colour = np.array([0.8, 1.0, 1.5])
+    assert np.allclose(met.adjust_params(rows, np.full(3, m.feh0), colour, m), rows)
+    d = np.random.default_rng(0).normal(0.0, met.FEH_SIGMA, 400_000)
+    for r in (1.2, 2.5, 6.0, 12.0):
+        assert np.mean(met.short_weight(np.full(len(d), r), d)) == pytest.approx(1.0, rel=0.03)
+    # Metal-rich hosts have more hot sub-Neptunes (Petigura+2018: beta = 1.6 at 1-10 d).
+    kw = dict(seed=7, params=HMCParams(), giants=None, small=None, derived=None, binaries=None)
+    hot = []
+    for feh in (-0.3, 0.3):
+        systems, comp = _sun_like(20_000, feh=feh)
+        pl = planets.attach_planets(systems, comp, **kw)
+        hot.append(np.sum((pl["period"] < 10) & (pl["planet_radius"] > 1.7) & (pl["planet_radius"] < 4)))
+    assert hot[1] > 1.5 * hot[0]

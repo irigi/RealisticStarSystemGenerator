@@ -29,7 +29,7 @@ import pandas as pd
 from scipy.stats import ks_2samp
 
 from ..inner.hmc import HMCParams
-from ..planets import attach_planets
+from ..planets import DEFAULT_METALLICITY, attach_planets
 from ..stars.spectral import bp_rp_from_teff
 from ..syssim_catalogs import MODELS, read_physical_catalog, read_physical_stars
 from .hmc import _parse_ids, _run_port, _stats, load_hmc_stellar_table
@@ -53,7 +53,7 @@ def _run_glue(params: HMCParams, stars: pd.DataFrame, seed: int):
     }
     systems = {"age_gyr": np.full(n, params.system_age), "n_components": np.ones(n, int)}
     pl = attach_planets(systems, components, seed=seed, params=params, mdwarf=None, giants=None, small=None,
-                        binaries=None, evolved=None, short=None, age="fixed", rv_masses=False)
+                        binaries=None, evolved=None, short=None, age="fixed", rv_masses=False, metallicity=None)
     df = pd.DataFrame({k: v for k, v in pl.items() if k not in ("system", "role", "model")})
     df["target"] = df.pop("component")
     return np.bincount(df["target"], minlength=n), df
@@ -110,15 +110,78 @@ def radius_valley_age(n_systems: int = 300_000, seed: int = 3) -> pd.DataFrame:
     return pd.DataFrame(rows).set_index("age")
 
 
+FEH_EDGES = np.linspace(-0.4, 0.4, 9)  # Petigura+2018's range, 0.1 dex bins
+
+
+def metallicity_sample(n_stars: int = 40_000, seed: int = 4):
+    """Single main-sequence FGK stars (0.75-1.3 Msun, CKS-like) with [Fe/H] uniform over FEH_EDGES."""
+    from .mdwarf import star_sample
+
+    systems, comp = star_sample((0.75, 1.3), n_stars, seed=seed)
+    comp["feh"] = np.random.default_rng(seed).uniform(FEH_EDGES[0], FEH_EDGES[-1], len(comp["mass"]))
+    return systems, comp
+
+
+def metallicity_betas(model, sample, seed: int = 5) -> pd.DataFrame:
+    """beta (occurrence ∝ 10^(beta [Fe/H])) per Petigura+2018 class, fitted to the model's occurrence in
+    0.1 dex [Fe/H] bins (weighted least squares in log10). HM-C planets only (``short=None``): the 'hot'
+    bin is 3-10 d here; planets inside 3 d (:mod:`starsys.inner.short`) carry Petigura's betas directly."""
+    from ..inner.metallicity import PETIGURA2018_BETA
+
+    systems, comp = sample
+    pl = attach_planets(systems, comp, seed=seed, metallicity=model, giants=None, small=None, binaries=None,
+                        evolved=None, derived=None, short=None)
+    feh = np.asarray(comp["feh"])
+    n_stars = np.histogram(feh, FEH_EDGES)[0]
+    x = 0.5 * (FEH_EDGES[1:] + FEH_EDGES[:-1])
+    rows = []
+    for p_r, r_r, beta, up, lo in PETIGURA2018_BETA:
+        sel = ((pl["period"] >= max(p_r[0], 3.0)) & (pl["period"] < p_r[1]) & (pl["planet_radius"] >= r_r[0])
+               & (pl["planet_radius"] < r_r[1]))
+        n = np.histogram(feh[pl["component"][sel]], FEH_EDGES)[0]
+        ok = n > 0
+        y = np.log10(n[ok] / n_stars[ok])
+        b = np.polyfit(x[ok], y, 1, w=np.sqrt(n[ok]))[0]
+        err = up if b > beta else lo
+        rows.append({"P (d)": f"{p_r[0]:g}-{p_r[1]:g}", "R (Re)": f"{r_r[0]:g}-{r_r[1]:g}", "planets": int(sel.sum()),
+                     "model beta": b, "Petigura+2018": beta, "+": up, "-": lo, "z": (b - beta) / err})
+    return pd.DataFrame(rows)
+
+
+def fit_metallicity(n_stars: int = 40_000):
+    """Grid fit of (d_log_fswp, d_alpha_p) to Petigura+2018's betas."""
+    import itertools
+    from dataclasses import replace
+
+    sample = metallicity_sample(n_stars, seed=6)
+    best = None
+    # d_ln_mass is fixed by prior: core mass ∝ solid content ∝ 10^[Fe/H] (ln 10 per dex).
+    for dm, df, da in itertools.product((DEFAULT_METALLICITY.d_ln_mass,), (0.0, 0.15, 0.3, 0.45), (-1.0, -1.5, -2.0, -2.5, -3.0)):
+        m = replace(DEFAULT_METALLICITY, d_ln_mass=dm, d_log_fswp=df, d_alpha_p=da)
+        score = float((metallicity_betas(m, sample)["z"] ** 2).sum())
+        print(f"  d_ln_mass {dm:.1f} d_log_fswp {df:.1f} d_alpha_p {da:.1f}: score {score:.1f}", flush=True)
+        if best is None or score < best[0]:
+            best = (score, m)
+    print("best:", best[1], f"score {best[0]:.1f}")
+    return best[1]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--catalogs", default="1-5")
     parser.add_argument("--colour", action="store_true", help="print the Kepler colour-offset table and exit")
     parser.add_argument("--valley", action="store_true", help="radius valley vs age (Berger+2020) and exit")
+    parser.add_argument("--metallicity", action="store_true", help="[Fe/H] dependence vs Petigura+2018 and exit")
+    parser.add_argument("--fit", action="store_true", help="with --metallicity: refit the two coefficients")
     args = parser.parse_args()
     pd.set_option("display.width", 200)
     if args.valley:
         print(radius_valley_age().round(3).to_string())
+        return
+    if args.metallicity:
+        model = fit_metallicity() if args.fit else DEFAULT_METALLICITY
+        res = metallicity_betas(model, metallicity_sample())
+        print(res.round(2).to_string(index=False), f"\nscore (sum z^2) = {(res['z'] ** 2).sum():.1f} over {len(res)}")
         return
     stellar = load_hmc_stellar_table()
     if args.colour:

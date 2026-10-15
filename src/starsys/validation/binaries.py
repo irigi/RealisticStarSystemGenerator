@@ -176,6 +176,81 @@ def separation_check(comp, on) -> pd.DataFrame:
 CORRECTION_TEFF = (2600.0, 3000.0, 3400.0, 3800.0, 4300.0, 4800.0, 5300.0, 5800.0, 6300.0, 7000.0)
 
 
+TRANSIT_P, TRANSIT_R = (3.0, 200.0), (0.5, 6.0)
+TRANSIT_BINS = {"M 3000-3900 K": (3000.0, 3900.0), "K 3900-5300 K": (3900.0, 5300.0), "G 5300-6000 K": (5300.0, 6000.0)}
+
+
+def _kepler_multiplicity():
+    """Kepler DR25 candidates (3-200 d, 0.5-6 Re): per Teff bin, planets per 1000 targets (FGK
+    targets of HM-C's stellar table only), N2/N1 and N3+/N1 (systems with k transiting planets)."""
+    from ..paths import CATALOGS_DIR
+
+    st = pd.read_csv(CATALOGS_DIR / "stellar_tables" / "q1_q17_dr25_gaia_berger_fgk_HFR2020b_cleaned.csv")
+    koi = pd.read_csv(CATALOGS_DIR / "observational" / "kepler_dr25_koi.csv", comment="#")
+    koi = koi[(koi.koi_pdisposition == "CANDIDATE") & koi.koi_period.between(*TRANSIT_P)
+              & koi.koi_prad.between(*TRANSIT_R)]
+    out, cdpp = {}, {}
+    for name, (lo, hi) in TRANSIT_BINS.items():
+        in_st = st.teff.between(lo, hi)
+        if in_st.sum() > 1000:  # FGK: HM-C's Kepler sample, with target counts
+            g = koi[koi.kepid.isin(st.kepid[in_st])].groupby("kepid").size()
+            per_1000 = 1000 * g.sum() / in_st.sum()
+            cdpp[name] = st.rrmscdpp04p5[in_st].to_numpy()
+        else:  # M dwarfs: not in the table; all candidates by the KOI Teff, noise of the coolest K dwarfs
+            g = koi[koi.koi_steff.between(lo, hi)].groupby("kepid").size()
+            per_1000 = np.nan
+            cdpp[name] = st.rrmscdpp04p5[st.teff.between(3900.0, 4300.0)].to_numpy()
+        c = np.bincount(np.minimum(g.to_numpy(), 4), minlength=5)[1:]
+        out[name] = (per_1000, c[1] / c[0], (c[2] + c[3]) / c[0], c[0])
+    return out, cdpp
+
+
+def transit_multiplicity(comp, pl, seed=0) -> pd.DataFrame:
+    """Transit multiplicity vs Kepler (backlog B21).
+
+    Inner planets (HM-C, 3-200 d, 0.5-6 Re) of every star, binaries included as in Kepler's field,
+    are observed from a random direction (transit if the impact parameter is below 1) and detected
+    if SNR = depth / CDPP_4.5h * sqrt(N_transits * T_dur / 4.5 h) > 7.1, with 4 years of data and
+    CDPPs drawn from Kepler targets of the same Teff. This is not Kepler's pipeline: for G dwarfs,
+    where HM-C is fitted to exactly these data, it gives ~1.35x Kepler's N2/N1. So the check
+    compares K and M dwarfs relative to G dwarfs (double ratios), where that bias cancels."""
+    from ..units import period_to_a_au
+
+    rng = np.random.default_rng(seed)
+    obs, cdpp = _kepler_multiplicity()
+    mass, rad, teff = (np.asarray(comp[k], dtype=float) for k in ("mass", "radius", "teff"))
+    noise = np.full(len(mass), np.nan)
+    for name, (lo, hi) in TRANSIT_BINS.items():
+        s = (teff >= lo) & (teff < hi)
+        noise[s] = rng.choice(cdpp[name], s.sum())
+    c = pl["component"]
+    a_rs = period_to_a_au(pl["period"], mass[c]) * 215.032 / rad[c]
+    b = a_rs * np.abs(np.cos(pl["incl_sky"]))
+    dur = 13.0 * (pl["period"] / 365.25) ** (1 / 3) * (mass[c] / rad[c] ** 3) ** (-1 / 3) * np.sqrt(np.clip(1 - b**2, 0, 1))
+    snr = (pl["planet_radius"] / (rad[c] * 109.1)) ** 2 * 1e6 / noise[c] * np.sqrt(1461.0 / pl["period"] * dur / 4.5)
+    det = (np.isin(pl["model"], INNER_MODELS) & (pl["host_kind"] == "S") & (b < 1) & (snr > 7.1)
+           & (pl["period"] >= TRANSIT_P[0]) & (pl["period"] <= TRANSIT_P[1])
+           & (pl["planet_radius"] >= TRANSIT_R[0]) & (pl["planet_radius"] <= TRANSIT_R[1]))
+    model = {}
+    for name, (lo, hi) in TRANSIT_BINS.items():
+        stars = (teff >= lo) & (teff < hi) & (np.asarray(comp["phase"]) == 0)
+        sel = det & stars[c]
+        k = np.bincount(c[sel], minlength=len(mass))
+        k = k[k > 0]
+        n = np.bincount(np.minimum(k, 4), minlength=5)[1:]
+        model[name] = (1000 * sel.sum() / stars.sum(), n[1] / n[0], (n[2] + n[3]) / n[0])
+    g = "G 5300-6000 K"
+    rows = []
+    for name in TRANSIT_BINS:
+        o, m = obs[name], model[name]
+        err = o[1] * np.sqrt(1 / o[3] + 1 / max(o[1] * o[3], 1))  # Poisson error of N2/N1
+        rows.append({"stars": name, "Kepler N2/N1": o[1], "+-": err, "Kepler N3+/N1": o[2],
+                     "model N2/N1": m[1], "model N3+/N1": m[2],
+                     "N2/N1 rel. to G: Kepler": o[1] / obs[g][1], "model": m[1] / model[g][1],
+                     "occurrence rel. to G: Kepler": o[0] / obs[g][0], "model ": m[0] / model[g][0]})
+    return pd.DataFrame(rows).set_index("stars")
+
+
 def _inner_counts(pl, n_comp, prim):
     inner = np.isin(pl["model"], INNER_MODELS) & (pl["host_kind"] == "S") & (pl["period"] >= 3) & (pl["period"] <= 300)
     return np.bincount(pl["component"][inner], minlength=n_comp)[prim]
@@ -230,6 +305,8 @@ def main(argv=None):
     print(avg)
     print("\n== Multiplicity of inner systems (fraction of hosts), same sample ==")
     print(mult)
+    print("\n== Transit multiplicity vs Kepler DR25 (simple detection model; compare relative to G) ==")
+    print(transit_multiplicity(comp, on))
     print("\n== Hot Jupiters: transit-like vs RV-like samples ==")
     print(hot_jupiters(systems, comp, on))
     cb = circumbinary(comp, on)

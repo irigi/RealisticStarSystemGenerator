@@ -85,6 +85,8 @@ from .inner import hmc
 from .inner import rv_masses as rvm
 from .inner import short as sh
 from .inner.mdwarf import MDwarfModel, adjust_params, mdwarf_weight
+from .inner.metallicity import MetallicityModel
+from .inner import metallicity as met
 from .outer import giants as gp
 from .outer import small as sp
 from .stars.spectral import bp_rp_from_teff, kepler_bp_rp_scatter
@@ -114,6 +116,7 @@ def photoevaporation_age(age_gyr) -> np.ndarray:
 
 
 DEFAULT_MDWARF = MDwarfModel()
+DEFAULT_METALLICITY = MetallicityModel()
 DEFAULT_GIANTS = gp.GiantModel()
 DEFAULT_SMALL = sp.SmallPlanetModel()
 DEFAULT_BINARIES = bn.BinaryModel()
@@ -136,7 +139,8 @@ def attach_planets(systems, components, seed=None, *, params: hmc.HMCParams | No
                    binaries: bn.BinaryModel | None = DEFAULT_BINARIES,
                    evolved: ev.EvolvedModel | None = DEFAULT_EVOLVED,
                    short: sh.ShortPeriodModel | None = DEFAULT_SHORT,
-                   derived: dv.DerivedModel | None = DEFAULT_DERIVED, age: str = "star",
+                   derived: dv.DerivedModel | None = DEFAULT_DERIVED,
+                   metallicity: MetallicityModel | None = DEFAULT_METALLICITY, age: str = "star",
                    amd_pair_criterion: str = "hill", rv_masses: bool = True) -> dict[str, np.ndarray]:
     """Draw planets for every component of every system.
 
@@ -169,6 +173,9 @@ def attach_planets(systems, components, seed=None, *, params: hmc.HMCParams | No
     derived
         Derived properties (:class:`starsys.derived.DerivedModel`): insolation, equilibrium
         temperature, habitable zone, spin. ``None`` leaves those columns out.
+    metallicity
+        [Fe/H] dependence of the inner planets (:class:`starsys.inner.metallicity.MetallicityModel`,
+        Petigura+2018); ``None`` for HM-C's metallicity-independent field average.
     age
         ``"star"`` (default): envelope retention uses each star's age, through the effective age
         :func:`photoevaporation_age`, normalised so that field stars keep HM-C's Kepler-fitted
@@ -226,6 +233,10 @@ def attach_planets(systems, components, seed=None, *, params: hmc.HMCParams | No
         is_m = np.zeros(len(host), dtype=bool)
 
     colour = bp_rp_from_teff(teff) + rng.normal(0.0, 1.0, len(teff)) * kepler_bp_rp_scatter(teff)
+    d_feh = None
+    if metallicity is not None:
+        rows = met.adjust_params(rows, h["feh"], colour, metallicity)
+        d_feh = h["feh"] - metallicity.feh0
     star_age = photoevaporation_age(h["age"]) if age == "star" else None
     rest = np.ones(len(host))
     if binaries is not None and binaries.boost:
@@ -265,7 +276,8 @@ def attach_planets(systems, components, seed=None, *, params: hmc.HMCParams | No
             nrm = gp.orbit_normals(h["plane"][kk[sel]], p["incl_invariable"][sel], p["asc_node_invariable"][sel])
             p["incl_sky"][sel] = np.arccos(np.clip(nrm[:, 2], -1.0, 1.0))
         if short is not None:
-            kk, p = _short_period(kk, p, idx, planes, h, rows, (short_weight[idx], usp_weight[idx]), limits, short, rng)
+            kk, p = _short_period(kk, p, idx, planes, h, rows, (short_weight[idx], usp_weight[idx]), limits, short, rng,
+                                  d_feh)
         if binaries is not None and binaries.circumbinary:
             kk, p = _circumbinary(kk, p, idx, h, rows, binaries, rng)
         return kk, p, planes
@@ -334,12 +346,12 @@ def attach_planets(systems, components, seed=None, *, params: hmc.HMCParams | No
     return result
 
 
-def _short_period(kk, p, idx, planes, h, rows, weight, limits, short: sh.ShortPeriodModel, rng):
+def _short_period(kk, p, idx, planes, h, rows, weight, limits, short: sh.ShortPeriodModel, rng, d_feh=None):
     """Add planets between 0.5 d and each host's HM-C P_min for hosts ``idx`` (``planes``:
     their reference planes, filled in place where missing; ``weight``: per-host multipliers at
     1-3 d and at 0.5-1 d). Returns the merged, sorted planets."""
     c = sh.draw_short(h["mass"][idx], h["radius"][idx], h["teff"][idx], rows[idx, hmc.I_PMIN], weight[0], rng, short,
-                      usp_weight=weight[1])
+                      usp_weight=weight[1], d_feh=None if d_feh is None else d_feh[idx])
     if limits is not None and len(c["host"]):
         hh = idx[c["host"]]
         a = period_to_a_au(c["period"], h["mass"][hh])
