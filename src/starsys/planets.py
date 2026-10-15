@@ -180,8 +180,8 @@ def attach_planets(systems, components, seed=None, *, params: hmc.HMCParams | No
     reference plane without one). For giants, ``mass_init`` and ``radius_init`` equal the
     final values (for giants of evolved hosts, ``planet_radius`` is re-inflated by the present
     flux). Planets of evolved hosts are on their present (expanded) orbits. With ``derived``:
-    ``insolation``, ``t_eq``, ``t_eq0``, ``hz``, ``t_lock_gyr`` and ``spin``
-    (:mod:`starsys.derived`).
+    ``insolation``, ``t_eq``, ``t_eq0``, ``hz``, ``t_lock_gyr``, ``spin``, ``rotation_h`` and
+    ``obliquity_deg`` (:mod:`starsys.derived`).
     """
     if age not in ("fixed", "star"):
         raise ValueError("age must be 'fixed' or 'star'")
@@ -310,7 +310,7 @@ def attach_planets(systems, components, seed=None, *, params: hmc.HMCParams | No
     if evolved is not None:
         result = _add_pulsar_planets(result, systems, components, evolved, rng)
     if derived is not None:
-        extra = dv.derive_properties(result, systems, components, derived)
+        extra = dv.derive_properties(result, systems, components, derived, rng)
         result["flags"] = result["flags"] | extra.pop("hz_flags")
         result.update(extra)
     return result

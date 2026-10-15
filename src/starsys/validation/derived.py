@@ -61,7 +61,7 @@ def _one_star(lum, teff, mass, age, a, m, r, e, names):
     out = dv.derive_properties(pl, {"n_components": np.array([1])}, comp)
     return pd.DataFrame({"planet": names, "insolation": out["insolation"], "T_eq (K)": out["t_eq"],
                          "HZ": [HZ_NAMES[x] for x in out["hz"]], "t_lock (Gyr)": out["t_lock_gyr"],
-                         "spin": [SPIN_NAMES[x] for x in out["spin"]],
+                         "spin": [SPIN_NAMES[x] for x in out["spin"]], "rotation (h)": out["rotation_h"],
                          "HZ extrapolated": out["hz_flags"] > 0})
 
 
@@ -123,6 +123,24 @@ def locking(comp, pl) -> pd.DataFrame:
                          "% synchronous": 100 * np.mean(pl["spin"][m] == dv.SPIN_SYNC),
                          "% 3:2": 100 * np.mean(pl["spin"][m] == dv.SPIN_32)})
     return pd.DataFrame(rows).set_index(["hosts", "P (d)"])
+
+
+def rotation(comp, pl) -> pd.DataFrame:
+    """Rotation periods and obliquities of free (not locked) S-type planets around main-sequence stars, by type."""
+    ms = _ms_hosts(comp)
+    c = pl["component"]
+    kind = dv.planet_kind(pl["planet_mass"], pl["planet_radius"], pl["lost_envelope"])
+    rows = []
+    for name, k in (("rocky", 0), ("sub-Neptune / ice giant", 1), ("giant", 2)):
+        sel = (pl["host_kind"] == "S") & ms[c] & (kind == k)
+        free = sel & (pl["spin"] == dv.SPIN_FREE)
+        rot = pl["rotation_h"][free]
+        ob = pl["obliquity_deg"][free]
+        rows.append({"planets": name, "% locked": 100 * np.mean(pl["spin"][sel] != dv.SPIN_FREE),
+                     "free: rotation 16th pct (h)": np.percentile(rot, 16), "median (h)": np.median(rot),
+                     "84th pct (h)": np.percentile(rot, 84), "% retrograde (obliquity > 90 deg)": 100 * np.mean(ob > 90),
+                     "median obliquity (deg)": np.median(ob)})
+    return pd.DataFrame(rows).set_index("planets")
 
 
 def kozai_census(comp, pl, n_without) -> pd.DataFrame:
@@ -195,6 +213,8 @@ def main(argv=None):
     pl = planets.attach_planets(systems, comp, seed=args.seed + 1)
     no_kz = planets.attach_planets(systems, comp, seed=args.seed + 1,
                                    binaries=planets.bn.BinaryModel(kozai=False), derived=None)
+    print("\n== Rotation of free planets ==")
+    print(rotation(comp, pl))
     print("\n== Habitable-zone planets per main-sequence star (S-type) ==")
     print(hz_census(comp, pl))
     print("\n== Spin states of main-sequence planets ==")

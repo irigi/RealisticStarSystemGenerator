@@ -1,7 +1,8 @@
 """Derived planet properties: insolation, equilibrium temperature, habitable zone, spin.
 
 Called by :func:`starsys.planets.attach_planets` (``derived=`` option) on the finished planet
-table; uses no random numbers, so the other columns do not depend on it.
+table, as the last step: its random draws (primordial spin, obliquity) come after all others,
+so the other columns do not depend on it. Without a generator the nominal values are used.
 
 - **Insolation** ``insolation`` (Earth = 1): present-day bolometric flux averaged over the
   orbit, L / (a^2 sqrt(1 - e^2)), from the host plus every other star of the system. A
@@ -24,16 +25,31 @@ table; uses no random numbers, so the other columns do not depend on it.
   The fits cover 2600-7200 K; a planet whose flux comes more than 10% from stars outside that
   range (white dwarfs, A stars, brown dwarfs) is flagged ``hz_extrapolated`` and uses the fit
   at the nearest valid Teff.
+- **Primordial spin:** rocky planets end the giant-impact stage spinning fast, with
+  isotropic spin axes: each component of the spin vector is Gaussian, with an RMS angular
+  velocity ~0.53 of the breakup rate sqrt(G M_p / R_p^3) (Kokubo & Genda 2010, realistic
+  accretion: 2.35 rad/h for the Earth, a ~3 h day; capped at breakup). Gas-rich planets are
+  given the Solar System giants' periods, log-normal around 10 h (giants) and 16 h
+  (sub-Neptunes and ice giants), 0.15 dex. Nominal values (no generator): the median, 3.0 h
+  for an Earth.
 - **Tidal locking** (Gladman+1996): despinning time t_lock = w a^6 alpha M_p Q / (3 G M*^2 k2
-  R_p^3), with initial spin w, moment-of-inertia factor alpha, tidal Q and Love number k2 by
-  planet type: rocky (R <= 1.6 Earth radii, or envelope lost): Q = 100, k2 = 0.3, alpha =
-  0.33, 12 h; sub-Neptunes and ice giants: Q = 1e4, k2 = 0.1, alpha = 0.23, 16 h; giants
-  (>= 50 Earth masses or >= 6 Earth radii): Q = 1e5, k2 = 0.5, alpha = 0.25, 10 h (Goldreich &
-  Soter 1966; Solar System values). ``t_lock_gyr``; ``spin``: 0 free, 1 synchronous (locked,
-  e < 0.1), 2 3:2 resonance (locked, e >= 0.1, Mercury-like; capture into 3:2 becomes likely
-  above e ~ 0.1, Makarov 2012). Locked means t_lock below the system age. Order-of-magnitude:
-  Q is uncertain by ~10x, and atmospheric thermal tides (Venus) are not modelled. With these
-  values Mercury is locked (t_lock 0.6 Gyr), Venus not (22 Gyr), Earth not (160 Gyr).
+  R_p^3), with primordial spin w, moment-of-inertia factor alpha, tidal Q and Love number k2
+  by planet type: rocky (R <= 1.6 Earth radii, or envelope lost): Q = 100, k2 = 0.3, alpha =
+  0.33; sub-Neptunes and ice giants: Q = 1e4, k2 = 0.1, alpha = 0.23; giants (>= 50 Earth
+  masses or >= 6 Earth radii): Q = 1e5, k2 = 0.5, alpha = 0.25 (Goldreich & Soter 1966; Solar
+  System values). ``t_lock_gyr``; ``spin``: 0 free, 1 synchronous (locked, e < 0.1), 2 3:2
+  resonance (locked, e >= 0.1, Mercury-like; capture into 3:2 becomes likely above e ~ 0.1,
+  Makarov 2012). Locked means t_lock below the system age. Order-of-magnitude: Q is uncertain
+  by ~10x, and atmospheric thermal tides (Venus) are not modelled. With the nominal spins
+  Mercury is locked (t_lock 2 Gyr), Venus not (90 Gyr), Earth not (660 Gyr).
+- **Rotation and obliquity:** ``rotation_h`` (sidereal, hours): the orbital period for
+  synchronous planets, 2/3 of it in 3:2 resonance; for free planets the primordial spin
+  slowed linearly by the stellar tide over the system's age (constant-Q torque, the same
+  model as t_lock). Spin-down by moons (the Earth's 24 h day comes from the Moon) and
+  atmospheric tides are not included. ``obliquity_deg``: 0 for locked planets (Cassini
+  state); isotropic for free rocky planets (Kokubo & Genda 2010); Rayleigh with 25 deg for
+  free gas-rich planets (an assumption: the Sun's giants have 3, 27, 98 and 28 deg); NaN
+  without a generator.
 """
 
 from __future__ import annotations
@@ -69,14 +85,19 @@ SPIN_FREE, SPIN_SYNC, SPIN_32 = 0, 1, 2
 class DerivedModel:
     albedo: float = 0.3
     hz_extrap_fraction: float = 0.1  # flux share from stars outside the HZ fits that sets the flag
-    # Tidal parameters (Q, k2, alpha, initial spin period in hours): rocky, sub-Neptune, giant.
-    tides_rocky: tuple = (100.0, 0.3, 0.33, 12.0)
+    # Tidal parameters (Q, k2, alpha, nominal primordial spin period in hours): rocky, sub-Neptune,
+    # giant. The rocky period is the nominal (median) value at Earth density; per planet it scales
+    # with the breakup rate (see ``rocky_spin_rms``).
+    tides_rocky: tuple = (100.0, 0.3, 0.33, 3.0)
     tides_subneptune: tuple = (1e4, 0.1, 0.23, 16.0)
     tides_giant: tuple = (1e5, 0.5, 0.25, 10.0)
     rocky_radius: float = 1.6  # Earth radii
     giant_mass: float = 50.0  # Earth masses
     giant_radius: float = 6.0  # Earth radii
     resonance_ecc: float = 0.1
+    rocky_spin_rms: float = 0.527  # RMS primordial spin / breakup rate (Kokubo & Genda 2010: 2.35 rad/h, Earth)
+    gas_spin_sigma_dex: float = 0.15
+    gas_obliquity_sigma_deg: float = 25.0
 
 
 def _poly(coef, teff):
@@ -137,11 +158,47 @@ def _sources(planets, systems, components):
     return flux, t_src, host_lum > 0
 
 
-def tidal_lock_time(a_au, planet_mass, planet_radius, host_mass, kind, model: DerivedModel = DerivedModel()):
-    """Despinning time (Gyr) from the initial spin; ``kind`` 0 rocky, 1 sub-Neptune, 2 giant."""
+MAXWELL_MEDIAN = 1.5382  # median |v| / sigma of a 3D Gaussian vector
+
+
+def breakup_rate(planet_mass, planet_radius) -> np.ndarray:
+    """sqrt(G M / R^3) in rad/s."""
+    m = np.asarray(planet_mass, dtype=float) * EARTH_MASS_KG
+    r = np.asarray(planet_radius, dtype=float) * EARTH_RADIUS_M
+    return np.sqrt(G_SI * m / r**3)
+
+
+def primordial_spin(planet_mass, planet_radius, kind, model: DerivedModel = DerivedModel(), rng=None):
+    """Primordial spin period (hours) and obliquity (deg, NaN without ``rng``) by planet type."""
+    kind = np.asarray(kind)
+    n = len(kind)
+    p0 = np.array([model.tides_rocky[3], model.tides_subneptune[3], model.tides_giant[3]])[kind].astype(float)
+    w_cr = breakup_rate(planet_mass, planet_radius)
+    rocky = kind == 0
+    sigma = model.rocky_spin_rms / math.sqrt(3.0) * w_cr  # per component
+    obliq = np.full(n, np.nan)
+    if rng is None:
+        w = MAXWELL_MEDIAN * sigma
+        gas_p = p0
+    else:
+        vec = rng.normal(size=(n, 3)) * sigma[:, None]
+        w = np.linalg.norm(vec, axis=1)
+        obliq = np.where(rocky, np.degrees(np.arccos(np.clip(vec[:, 2] / np.maximum(w, 1e-300), -1.0, 1.0))),
+                         np.minimum(model.gas_obliquity_sigma_deg * np.sqrt(-2.0 * np.log1p(-rng.random(n))), 180.0))
+        gas_p = p0 * 10.0 ** (model.gas_spin_sigma_dex * rng.normal(size=n))
+    rocky_p = 2 * np.pi / np.minimum(w, w_cr) / 3600.0
+    return np.where(rocky, rocky_p, gas_p), obliq
+
+
+def tidal_lock_time(a_au, planet_mass, planet_radius, host_mass, kind, model: DerivedModel = DerivedModel(),
+                    p0_h=None):
+    """Despinning time (Gyr) from the primordial spin (``p0_h`` hours, default nominal); ``kind`` 0
+    rocky, 1 sub-Neptune, 2 giant."""
     pars = np.array([model.tides_rocky, model.tides_subneptune, model.tides_giant])[kind]
-    q, k2, alpha, p0 = pars.T
-    omega = 2 * np.pi / (p0 * 3600.0)
+    q, k2, alpha, _ = pars.T
+    if p0_h is None:
+        p0_h = primordial_spin(planet_mass, planet_radius, kind, model)[0]
+    omega = 2 * np.pi / (np.asarray(p0_h, dtype=float) * 3600.0)
     a = np.asarray(a_au, dtype=float) * AU_M
     m = np.asarray(planet_mass, dtype=float) * EARTH_MASS_KG
     r = np.asarray(planet_radius, dtype=float) * EARTH_RADIUS_M
@@ -158,13 +215,17 @@ def planet_kind(planet_mass, planet_radius, lost_envelope, model: DerivedModel =
     return np.where(giant, 2, np.where(rocky, 0, 1)).astype(np.int8)
 
 
-def derive_properties(planets, systems, components, model: DerivedModel = DerivedModel()) -> dict[str, np.ndarray]:
-    """New per-planet columns (see module docstring) and the ``flags`` to OR in (``hz_flags``)."""
+def derive_properties(planets, systems, components, model: DerivedModel = DerivedModel(),
+                      rng=None) -> dict[str, np.ndarray]:
+    """New per-planet columns (see module docstring) and the ``flags`` to OR in (``hz_flags``).
+
+    ``rng``: generator for the primordial spins and obliquities (``None``: nominal values).
+    """
     n = len(planets["a_au"])
     if not n:
         e = np.zeros(0)
         return {"insolation": e, "t_eq": e, "t_eq0": e, "hz": np.zeros(0, np.int8), "t_lock_gyr": e,
-                "spin": np.zeros(0, np.int8), "hz_flags": np.zeros(0, np.int32)}
+                "spin": np.zeros(0, np.int8), "rotation_h": e, "obliquity_deg": e, "hz_flags": np.zeros(0, np.int32)}
     flux, t_src, lit = _sources(planets, systems, components)
     s = flux.sum(axis=1)
     lit = lit & (s > 0)
@@ -192,10 +253,17 @@ def derive_properties(planets, systems, components, model: DerivedModel = Derive
 
     # Spin.
     kind = planet_kind(mp, planets["planet_radius"], planets["lost_envelope"], model)
-    t_lock = tidal_lock_time(planets["a_au"], mp, planets["planet_radius"], planets["host_mass"], kind, model)
+    p0, obliq = primordial_spin(mp, planets["planet_radius"], kind, model, rng)
+    t_lock = tidal_lock_time(planets["a_au"], mp, planets["planet_radius"], planets["host_mass"], kind, model, p0)
     age = np.asarray(components["age_gyr"], dtype=float)[np.asarray(planets["component"])]
     locked = t_lock < age
-    spin = np.where(locked, np.where(np.asarray(planets["ecc"]) >= model.resonance_ecc, SPIN_32, SPIN_SYNC),
-                    SPIN_FREE).astype(np.int8)
+    res = np.asarray(planets["ecc"]) >= model.resonance_ecc
+    spin = np.where(locked, np.where(res, SPIN_32, SPIN_SYNC), SPIN_FREE).astype(np.int8)
+    # Rotation: linear despin from the primordial rate, at least the orbital rate.
+    p_orb_h = 2 * np.pi * np.sqrt((np.asarray(planets["a_au"], dtype=float) * AU_M) ** 3
+                                  / (G_SI * np.asarray(planets["host_mass"], dtype=float) * MSUN_KG)) / 3600.0
+    w = np.maximum(1.0 / p0 * (1.0 - age / t_lock), 1.0 / p_orb_h)
+    rotation = np.where(locked, np.where(res, 2.0 / 3.0 * p_orb_h, p_orb_h), 1.0 / w)
+    obliq = np.where(locked, 0.0, obliq)
     return {"insolation": s, "t_eq": t_eq, "t_eq0": t_eq0, "hz": hz, "t_lock_gyr": t_lock, "spin": spin,
-            "hz_flags": hz_flags}
+            "rotation_h": rotation, "obliquity_deg": obliq, "hz_flags": hz_flags}

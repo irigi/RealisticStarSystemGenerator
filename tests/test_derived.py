@@ -45,7 +45,11 @@ def test_solar_system():
                                            "Jupiter": dv.HZ_TOO_COLD}
     spin = dict(zip(names, out["spin"]))
     assert spin["Mercury"] == dv.SPIN_32 and spin["Earth"] == dv.SPIN_FREE and spin["Venus"] == dv.SPIN_FREE
-    assert 0.1 < out["t_lock_gyr"][0] < 2.0 and out["t_lock_gyr"][2] > 50
+    assert 0.1 < out["t_lock_gyr"][0] < 4.6 and out["t_lock_gyr"][2] > 50
+    assert out["rotation_h"][0] == pytest.approx(1407.5, rel=0.01)  # Mercury, 3:2
+    assert 2.0 < out["rotation_h"][2] < 5.0  # primordial (Kokubo & Genda 2010); no Moon in this model
+    assert out["rotation_h"][4] == pytest.approx(10.0)  # nominal giant spin
+    assert out["obliquity_deg"][0] == 0.0 and np.isnan(out["obliquity_deg"][2])
     assert not out["hz_flags"].any()
 
 
@@ -61,6 +65,31 @@ def test_m_dwarf_planets_in_the_hz_are_locked():
     out = dv.derive_properties(pl, systems, comp)
     assert (out["hz"] == dv.HZ_CONSERVATIVE).all() and (out["spin"] == dv.SPIN_SYNC).all()
     assert (out["hz_flags"] == planets.FLAG_HZ_EXTRAP).all()  # 2566 K is below Kopparapu's 2600 K
+
+
+def test_primordial_spins_and_obliquities():
+    rng = np.random.default_rng(0)
+    n = 20_000
+    kind = np.repeat(np.array([0, 2], dtype=np.int8), n)
+    m = np.repeat([1.0, 317.8], n)
+    r = np.repeat([1.0, 11.2], n)
+    p0, ob = dv.primordial_spin(m, r, kind, rng=rng)
+    rocky = kind == 0
+    w = 2 * np.pi / (p0[rocky] * 3600.0)
+    assert np.sqrt(np.mean(w**2)) * 3600.0 == pytest.approx(2.35, rel=0.03)  # Kokubo & Genda 2010
+    assert (w <= dv.breakup_rate(1.0, 1.0) * (1 + 1e-9)).all()
+    assert np.mean(np.cos(np.radians(ob[rocky]))) == pytest.approx(0.0, abs=0.02)  # isotropic
+    assert np.median(p0[~rocky]) == pytest.approx(10.0, rel=0.03) and (ob[~rocky] < 90).mean() > 0.99
+
+
+def test_rotation_with_a_generator():
+    systems, comp = _system([1.0], [5772.0], [1.0])
+    pl = _planets([0.05, 1.0, 5.2], [1.0, 1.0, 317.8], [1.0, 1.0, 11.2])
+    out = dv.derive_properties(pl, systems, comp, rng=np.random.default_rng(1))
+    p_orb_h = 2 * np.pi * np.sqrt((pl["a_au"] * 1.495978707e11) ** 3 / (6.674e-11 * 1.989e30)) / 3600
+    assert out["spin"][0] == dv.SPIN_SYNC and out["rotation_h"][0] == pytest.approx(p_orb_h[0], rel=1e-3)
+    assert out["spin"][1] == dv.SPIN_FREE and out["rotation_h"][1] < p_orb_h[1]
+    assert np.isfinite(out["obliquity_deg"]).all() and out["obliquity_deg"][0] == 0.0
 
 
 def test_binary_light():

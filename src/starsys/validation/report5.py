@@ -118,6 +118,11 @@ def main(argv=None):
         "",
         _md(vd.locking(comp, pl), ".1f"),
         "",
+        "Rotation of free (not locked) planets (primordial spin, Kokubo & Genda 2010 for rocky planets, "
+        "slowed by the stellar tide; spin-down by moons is not included):",
+        "",
+        _md(vd.rotation(comp, pl), ".1f"),
+        "",
         "## Kozai-Lidov cycles",
         "",
         _md(vd.kozai_census(comp, pl, len(no_kz["period"]))),
