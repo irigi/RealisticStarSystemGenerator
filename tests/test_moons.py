@@ -116,3 +116,11 @@ def test_moons_slow_the_planet_spin():
     moons.attach_moons(pl, comp, seed=3)
     assert np.median(pl["rotation_h"]) == pytest.approx(10.0, rel=0.01)
     assert (pl["rotation_h"] < 13.0).all() and (pl["rotation_h"] >= 10.0).all()
+
+
+def test_tidal_heating_capped_by_energy_supply():
+    from starsys.generate import generate
+    b = generate(6000, seed=5)
+    f = b.moons["heat_flux_w_m2"]
+    assert f.max() < 500  # super-Jupiter moons were 1e3-1e4 W/m^2 before the cap
+    assert (f > 2).sum() > 0  # Io-like and stronger heating still occurs

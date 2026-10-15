@@ -50,8 +50,8 @@ def sentence(b: Body) -> str:
         comp = "icy" if d.get("composition") == "ice" else "rocky"
         s = f"{kind} {comp} moon"
         flux = d.get("heat_flux_w_m2") or 0
-        if flux > 30:
-            s += ", tidally molten (magma ocean)"
+        if flux > 20:
+            s += ", a super-Io: global volcanism, likely over a magma ocean"
         elif flux > 1:
             s += ", volcanically active (Io-like tidal heating)"
         elif flux > 0.05 and comp == "icy":

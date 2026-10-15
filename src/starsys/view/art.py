@@ -357,7 +357,7 @@ def _moon(n, rng, p, comp, flux):
         rgb = base * (0.85 + 0.25 * h[..., None])
         spots = np.clip(n.fbm(tuple(7 * q for q in p), 3) - 0.35, 0, 1) * 3
         rgb = rgb * (1 - spots[..., None]) + _hex("#7a2a10") * spots[..., None]
-        if flux > 30:  # magma ocean
+        if flux > 20:  # super-Io
             glow = np.clip(n.ridged(tuple(4 * q for q in p), 4) - 0.6, 0, 1) * 3
             rgb = rgb * (1 - glow[..., None]) + _hex("#ff7020") * glow[..., None]
         return rgb
@@ -388,7 +388,7 @@ def render(body: dict, px: int, seed: int) -> np.ndarray:
     if "composition" in body:
         rgb = _moon(n, rng, p, body.get("composition"), body.get("heat_flux_w_m2"))
         flux = body.get("heat_flux_w_m2") or 0
-        if flux > 30:
+        if flux > 20:
             night = 0.5
     else:
         kind, t_eq = body.get("type"), float(body.get("t_eq_k") or 300)

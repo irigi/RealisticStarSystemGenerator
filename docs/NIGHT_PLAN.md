@@ -51,7 +51,7 @@ unticked item.
 6. [x] **Star map window** (done: `python -m starsys.view --galaxy`): 3D rotatable (pyqtgraph OpenGL), level of detail (galaxy cloud far,
    individual stars near camera), search by name/ID, click -> system viewer.
 7. [x] **A10** (done): condition on known planets of all components (Alpha Cen -> Proxima b, d).
-8. [ ] **Moon heating review**: check moon masses (Canup & Ward 1e-4 scaling), forced
+8. [x] **Moon heating review** (done: capped by tidal energy supply): check moon masses (Canup & Ward 1e-4 scaling), forced
    eccentricities, heating formula against literature (Heller & Pudritz on super-Jupiter moons);
    fix if a bug, otherwise label magma-ocean moons and document.
 9. [ ] Docs (DESIGN, NEXT_STEPS, ASSUMPTIONS, README-style usage), memory, morning summary.
@@ -109,3 +109,10 @@ unticked item.
   are independent given the stars in the generator), each component with its own default surveys.
   Model planets skip letters taken by known planets even when the archive spells the host
   differently ("Proxima Cen b" vs "Proxima Centauri c").
+- D13 (item 8): the extreme heating was not a bug in the formula but a missing physical limit:
+  a resonance can only dissipate the power the planet's tide transfers to the moons' orbits
+  (Yoder & Peale 1981). Without it the median heated moon got 5x that supply; super-Jupiter
+  moons reached 1e4 W/m^2. With the cap the maximum in 20 000 systems is 142 W/m^2 and 35 moons
+  exceed 30 W/m^2 (was 234). Kept the generic giant k2/Q (5e-6) rather than Jupiter's measured
+  1.1e-5, so an Io analogue gets ~0.5x Io's observed heat (changing it would also move tidal
+  locking times). Moons above 20 W/m^2 are labelled "super-Io".

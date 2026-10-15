@@ -247,3 +247,11 @@ to V = 7.9 + 1.1|sin b| before G5, 7.3 + 1.1|sin b| later; ESA 1997). A procedur
 removed when these catalogues would list it. Assumed: Hipparcos parallax error 0.9 mas for all
 Survey stars; extinction 0.7 mag/kpc in a 100-pc dust layer; bolometric corrections from the
 Mamajek dwarf table also for giants.
+
+## Moon tidal heating cap (phase 7)
+
+Forced eccentricities of resonant moons are drawn (0.001-0.01), and the Io-calibrated heating
+formula is capped at the energy the planet's tide feeds into the resonant moons' orbits,
+sum of T n with T = 3/2 (k2/Q)_p G m^2 R_p^5 / a^6 (Yoder & Peale 1981). With the generic giant
+k2/Q = 5e-6 an Io analogue gets ~5e13 W (observed ~1e14 W; Jupiter's measured k2/Q is 1.1e-5,
+Lainey et al. 2009). Above ~10x Io's flux (20 W/m^2) moons are labelled super-Ios.
