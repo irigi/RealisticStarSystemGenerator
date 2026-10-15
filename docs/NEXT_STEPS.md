@@ -29,8 +29,7 @@ of it in drawing prior systems; the importance sampling itself reaches ESS 200 e
 
 **Handoff (2026-10-15, session paused).** Step 3 (surveys) and step 4 (validation) are coded
 and committed as work in progress; what is left:
-1. Rerun `pytest -q` (expect ~84 tests) and fix anything red (last full run: before the
-   direct-imaging survey, the hot-star RV error and the placeholder companions).
+1. `pytest -q`: 79 passed on the committed code (2026-10-15).
 2. Run `python -m starsys.validation.real --injection 100` and `--holdout 30 --no-gaia`
    (5–15 min each) and write `docs/validation/phase6.md`: summary table (stellar benchmarks
    with pulls, injection calibration per period/mass bin, hold-out posterior/prior ratio,
