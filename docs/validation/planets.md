@@ -8,7 +8,7 @@ and the extrapolation map, is [phase4_report.md](phase4_report.md)
 (`python -m starsys.validation.report`). Phase 5 (derived properties, Kozai–Lidov, moons, tidal
 decay on the giant branches) is validated in [phase5.md](phase5.md).
 
-## Phase 4 summary (2026-10-14)
+## Phase 4 summary (2026-10-14, updated 2026-10-15 after the backlog session)
 
 All rates are intrinsic (planets per star, no detection model). Verdicts:
 - **match:** within the quoted uncertainty;
@@ -27,22 +27,23 @@ All rates are intrinsic (planets per star, no detection model). Verdicts:
 | Giants vs [Fe/H] (Bryan & Lee 2024), Bonomo+2025, Johnson+2010 | 14.0 / 4.7 / 9.5 / 7.5% | 14.3 / 5.0 / 9.8 / 7 ± 1% | match |
 | Same giant model on the population's single Sun-like stars: 2–8 au; % with a giant at 0.23–10 au | 9.7; 18.3% | 14.1 +2.0/−1.8; 17.6 +2.4/−1.9 | expected: the population's [Fe/H] distribution (mean −0.05, SD 0.20) is narrower and lower than CLS's (−0.01, 0.28), which predicts 0.85× the CLS-sample rate; observed 0.83× (report) |
 | Fulton+2021 3.8–7.1 au and 3000–10000 d rates | ~5 | 15.5, 12.6 (exceed their 2–8 au rate) | tension (B10) |
-| HM-C planets ≥ 30 M⊕ inside 300 d | 11 per 100 Sun-like stars | ~1.9 (CLS mass function) | tension (B9) |
+| HM-C masses of 4–10 R⊕ planets, rescaled to RV (`starsys.inner.rv_masses`) | median 20 / 38 / 82 M⊕ at 4–6 / 6–8 / 8–10 R⊕ (HM-C's own: 43 / 95 / 155) | 24 / 35 / 85 M⊕ (NASA archive RV masses, biased high); Otegi+2020 | match (B9, §4.3) |
+| RV occurrence at P < 50 d around GK dwarfs, M sin i 10–30 / 30–100 / 100–1000 M⊕ | 8.9 / 2.1 / 1.3% | 4.8 / 3.0 / 2.6% (Howard+2010 fit, ±~60%) | consistent; 3–10 M⊕: 20% vs 9% (Howard) and 30–50% (HARPS) |
 | Direct imaging (Nielsen+2019, Bowler 2016, Vigan+2021) | within ~1σ | — | consistent; GPIES < 6.9% vs 8.7% depends on the assumed shape |
 | Microlensing mass-ratio function (Zang+2025) over the measured range | within ~6% | — | match (§4.4) |
 | Wide orbits, s = 2–6 (Poleski+2021) | 0.05 | 1.4 +0.9/−0.6 | tension (B15) |
 | η⊕, conservative HZ, 0.5–1.5 R⊕ | 0.085 | 0.37–0.60 (Bryson+2021); 0.008–0.076 (Neil & Rogers 2020) | tension with Bryson, match with photoevaporation-aware estimates (B16) |
 | Small planets 237–500 d (Hsu+2019) | 0.053 | 0.03–0.40 | consistent |
 | Planets at 0.5–2 d, FGK (Hsu+2019) | within 0.89–1.04 of each bin | — | match (calibrated; B7) |
-| USPs, F / G / K / M (Sanchis-Ojeda+2014) | 0.15 / 0.56 / 1.01 / 1.80% | 0.15 / 0.51 / 0.83 / 1.10% | match for F, G, K; M 1.7σ high (B8) |
+| USPs, F / G / K / Kepler-like early M (Sanchis-Ojeda+2014) | 0.14 / 0.58 / 0.92 / 1.21% | 0.15 / 0.51 / 0.83 / 1.10% | match (B8; all M dwarfs 2.7%, set by late M dwarfs, where TESS agrees) |
 | HM-C at 2–8 d vs Hsu+2019 | 1–4 R⊕ at 2–4 d ×1.2–1.9; sub-Earths at 4–8 d ×0.5 | — | tension (B24) |
 | Suppressed fraction of G primaries (Moe & Kratter 2021) | 21% volume-, 26% magnitude-limited | 33 ± 5%, 43 ± 7% | tension: the population has fewer close companions (B20) (§4.5) |
 | Hot Jupiters, transit-like vs RV-like samples | 0.62% / 0.80% | 0.4–0.6% / ~1% | match (not tuned) |
 | Inner multiplicity with the single-star boost | ≥ 5 planets: 0.49 → 0.68 of M-dwarf hosts | Kepler-fitted HM-C | tension (B21) |
 | Circumbinary planets, 4–6 / 6–10 / > 10 R⊕ (Armstrong+2014) | 14.6 / 7.8 / 3.7% | 14 / 10 / < 5.9% | match (calibrated; B22) |
-| Giant planets around giant stars, 89–4400 d (Wolthoff+2022) | 5.2% (RGB 5.0, HB 5.4) | 10.7 +2.2/−1.6% (RGB 14.2, HB 6.6) | tension: model ~2× low (B23) (§4.6) |
-| Giant planets with P < 90 d around giant stars | 1.8–1.9% (main sequence 3.0–4.1%) | almost none (Johnson+2007; Wolthoff+2022) | tension (B23) |
-| White dwarfs with planets | 44% (15% at 1–10 au) | 25–50% metal-polluted (Koester+2014) | consistent |
+| Giant planets around giant stars, 89–4400 d, reweighted to Wolthoff+2022's sample (stage, mass, [Fe/H]) | 7.0% (RGB 7.1, HB 7.0) | 10.7 +2.2/−1.6% (RGB 14.2, HB 6.6) | HB match; RGB 2.6σ low (B23) (§4.6) |
+| Giant planets with P ≤ 89 d around giant stars, Wolthoff-like sample | 1.5 expected hosts among 482 | none found | consistent (Poisson p = 0.23) |
+| White dwarfs with planets | 43% (14% at 1–10 au) | 25–50% metal-polluted (Koester+2014) | consistent |
 | Innermost white-dwarf planets (Mustill & Villaver 2012) | ~3 au (1 M☉ progenitor), ~10 au (4–8 M☉) | ~1.5 and ~10 au | consistent |
 
 **Where the model extrapolates** (generated report, 300,000 systems, 1.6 million planets): 35%
@@ -113,11 +114,22 @@ published model on Kepler-like stars.
 HM-C's mass-loss timescale (Lopez+2012 / Neil & Rogers 2020) already scales with each
 star's bolometric luminosity (from its R and Teff), but there is no separate XUV
 term, and retention uses a fixed age (`system_age` = 5 Gyr in all 100 headers).
-`attach_planets(..., age="star")` uses each star's own age instead. This is an
-extrapolation of the fitted model, so it is off by default. For a 0.5 Gyr Sun-like
-star it strips far fewer envelopes. Over the 20-pc population (mean age ~4 Gyr) the
-stripped fraction drops from 13.7% to 10.4%. A stellar-type-dependent XUV/bolometric
-ratio is not implemented; it would need a re-fit of α_pret to be meaningful.
+
+Since 2026-10-15 (backlog B2) `attach_planets` uses each star's own age by default
+(`age="star"`), through an effective age t_eff = 1.35 × 5 Gyr × (age / 5 Gyr)^0.5
+(`planets.photoevaporation_age`). The two constants are fitted to two conditions
+(`python -m starsys.validation.planets --valley`, 300,000 systems):
+
+| Super-Earths (1–1.8 R⊕) / sub-Neptunes (1.8–3.5 R⊕), P < 100 d | fixed 5 Gyr | per-star age | Observed |
+|---|---|---|---|
+| FGK main-sequence stars (HM-C's Kepler fit) | 0.623 | 0.618 | (the fixed-age value) |
+| 5300–7000 K hosts, young (< 1 Gyr) / old | 0.97 | 0.61 | 0.61 ± 0.11 (Berger+2020, property-matched Gaia–Kepler hosts) |
+
+HM-C's own form (q = 1, c = 1) also reproduces Berger's trend (0.50) but lowers the
+field ratio to 0.53, away from the Kepler fit, because young stars dominate ⟨1/age⟩.
+`age="fixed"` keeps the published behaviour; the Kepler-glue check below uses it. A
+stellar-type-dependent XUV/bolometric ratio is not implemented; it would need a re-fit of
+α_pret to be meaningful.
 
 ## 4.2 M dwarfs and below (`starsys.inner.mdwarf`)
 
@@ -170,7 +182,8 @@ search against Ment & Charbonneau. The grid caps the bare fraction at 0.9: it pr
 
 ### Results (out of sample)
 
-Early M vs DC15: score 23.2 over 33 cells (plain HM-C: 70). Integrated:
+Early M vs DC15: score 23.2 over 33 cells (plain HM-C: 70); 25.5 since the USPs of B8 (2026-10-15).
+Integrated:
 
 | quantity | observed | model |
 |---|---|---|
@@ -193,11 +206,11 @@ Mid-to-late M (0.1–0.3 M☉, median 0.18) vs Ment & Charbonneau (2023), TESS, 
 | 0.5–7 | 1–1.5 | 0.446 +0.194/−0.143 | 0.29 | −1.1 |
 | 0.5–7 | 1.5–2 | < 0.073 | 0.15 | +1.0 |
 | 0.5–7 | > 2 | < 0.072 | 0.086 | +0.3 |
-| 0.5–1 | 0.5–4 | 0.047 +0.019/−0.015 | 0.056 | +0.5 |
+| 0.5–1 | 0.5–4 | 0.047 +0.019/−0.015 | 0.056 (0.071 with B8's USPs) | +0.5 (+1.2) |
 | 1–2.7 | 0.5–4 | 0.159 +0.064/−0.050 | 0.39 | +2.6 |
 | 2.7–7 | 0.5–4 | 0.402 +0.162/−0.127 | 0.62 | +1.3 |
 
-Score 18.6 over 8 bins.
+Score 18.6 over 8 bins (20.1 with B8's USPs).
 
 Known tension: the HM-C mass distribution (σ_ln M = 1.77) is too broad to produce the
 narrow 1–1.5 R⊕ peak Ment & Charbonneau see (they find a downturn below 0.9 R⊕). The
@@ -239,8 +252,25 @@ Host scaling: ∝ M★ (Johnson+2010) up to the 1.68 M☉ peak, Gaussian drop (�
 above (Wolthoff+2022); ∝ 10^(1.2 [Fe/H]) (Johnson+2010). No giants below 0.1 M☉;
 giant hosts outside 0.2–3 M☉ are flagged `giant_host`.
 
+Added in the backlog session (2026-10-15):
+- **Intermediate-mass hosts** (B13/B23): a share of the warm/cold giants, rising linearly from
+  0 at 1.1 M☉ to 1 at 1.6 M☉, follows Wolthoff+2022's log-normal in period (mode 793 d,
+  σ_lnP 0.89) instead of Fulton's s(a). The number of giants is unchanged. Retired A stars
+  have no giants inside 0.6 au (Bowler+2010), and Wolthoff's ≥ 1.4 M☉ hosts differ from
+  main-sequence period distributions. Main-sequence stars of 1.5–2 M☉ now have 13.0% with a
+  ≥ 0.8 MJ (M sin i) giant at 89–4400 d (Wolthoff's fit: 15.8%; before: 9.1%).
+- **Correlated masses** (B13): a host's warm/cold giants draw masses through a Gaussian copula
+  (ρ = 0.7; the marginal stays q(M)). Detectable pairs: Spearman 0.60 (CLS: 0.63, 24 pairs;
+  independent masses: 0.14). Rosenthal+2023 (CLS IV) also find multi-giant systems heavier
+  and less eccentric than single giants. The model's multis are now heavier (median M sin i
+  1.03 vs 0.91 MJ). The eccentricity difference is not significant in the CLS table (KS
+  p = 0.33), so the eccentricity prior does not depend on multiplicity.
+- **Radii** (B12): Fortney+2007 evolution models (age, insolation, core) with heavy-element
+  masses from Thorngren+2016 (57.9 (M/MJ)^0.61 M⊕, factor 1.82 spread), pinned to the
+  Neptune–Saturn relation below 120 M⊕; Weiss+2013 inflation for hot giants (see Checks).
+
 Fitted parameters: normalisation 0.106 and per-star Gamma dispersion k = 1.0 (jointly,
-five targets below); hot-Jupiter rate; 5.2× more outer giants around hot-Jupiter hosts
+five targets below); hot-Jupiter rate; 7.8× (5.2× before the mass correlation) more outer giants around hot-Jupiter hosts
 (Knutson+2014: 51 ± 10% have a 1–13 MJ companion at 1–20 au); eccentricity prior
 Beta(0.97, 2.36), refitted in 4.5 to Beta(0.98, 2.13) once single stars carried the
 binary model's boosted inner systems.
@@ -295,6 +325,10 @@ multi-giant systems.
 | 0.8–1.2 M☉: 5–13 MJ at 10–100 au, % | 1.5 | 1.1 [0.7, 1.8] (Nielsen+2019 fit, scaled to 1 M☉) |
 | 0.8–1.2 M☉: 5–13 MJ at 30–100 au, % | 0.3 | 0.6 +0.7/−0.5 (Bowler 2016, to 300 au) |
 | 0.7–1.4 M☉: 1–13 MJ at 5–100 au, % | 9.6 | 5.8 +4.7/−2.8 (Vigan+2021, incl. brown dwarfs, to 300 au) |
+| Log-mass Spearman correlation of detectable giant pairs | 0.60 | 0.63 (CLS, 24 pairs) |
+| Cool transiting giants (insolation < 150), median radius at 30–60 / 60–120 / 120–300 / 300–1000 / 1000–4000 M⊕ (R⊕) | 6.6 / 8.2 / 11.1 / 11.5 / 11.7 | 7.0 / 8.7 / 10.9 / 11.6 / 11.9 (NASA archive; the old relation gave 6.4 / 8.8 / 11.4 / 10.9 / 10.5) |
+| RV occurrence at P < 50 d, GK dwarfs, M sin i 3–10 / 10–30 / 30–100 / 100–1000 M⊕, % | 20 / 8.9 / 2.1 / 1.3 | 9.1 / 4.8 / 3.0 / 2.6 (Howard+2010 fit) |
+| f(cold Jupiter \| small inner planet) / f(cold Jupiter), single 0.6–1.2 M☉ stars | 0.95 | ~0.96 ± 0.2 (Bonomo+2025, metallicity difference removed) |
 
 Tensions:
 
@@ -304,9 +338,19 @@ Tensions:
 - Nielsen+2019's < 6.9% (95%) for 2–13 MJ at 3–100 au around < 1.5 M☉ assumes a
   log-flat distribution; the model (8.7%) puts most of these planets at 2–4 MJ and
   3–10 au, where GPIES is insensitive. Vigan+2021 (FGK) is +0.8σ.
-- Inside 3–300 d, HM-C gives 11 planets ≥ 30 M⊕ per 100 Sun-like stars (median
-  4.4 R⊕), while the CLS mass function gives 1.9 at 30–106 M⊕: HM-C's masses for
-  3–6 R⊕ planets look high for RV (backlog B9).
+- B9, resolved 2026-10-15: HM-C draws masses and fits only radii to Kepler. Above ~4 R⊕ its
+  mass–radius relation is flat, and its masses came out 1.6–3× above RV-measured ones
+  (median 43 vs 24 M⊕ at 4–6 R⊕, 95 vs 35 at 6–8 R⊕). `starsys.inner.rv_masses`
+  rescales HM-C masses of envelope planets by a radius-dependent factor ≤ 1 to Otegi+2020's
+  volatile-rich relation (to 8 R⊕, then towards Saturn). Ranks and scatter are kept, radii
+  are unchanged, and stability can only improve. HM-C planets ≥ 30 M⊕ inside 300 d drop
+  from 11 to 7 per 100 Sun-like stars; the rest is the heavy tail at 3–4 R⊕, which the
+  archive shares (13% above 30 M⊕). The RV occurrence at P < 50 d agrees with Howard+2010
+  with either set of masses; the "CLS mass function" rate (1.9) is an extrapolation of the
+  giant model to 30 M⊕, not a measurement.
+- Lone and multi-giant systems: see the Model notes above (CLS IV).
+- The inner-planet deficit next to giants (B11): the model's f(CJ | small planet) /
+  f(CJ) is 0.95, inside Bonomo+2025's ~0.96 ± 0.2.
 
 ### Stellar population (100,000 systems)
 
@@ -560,13 +604,16 @@ rerun 2026-10-15 with tidal decay).
 
 ### Checks
 
+Numbers from 2026-10-15, after the backlog session (intermediate-mass period distribution,
+correlated giant masses, per-star photoevaporation ages):
+
 | Phase | Stars | Planets per star | % with planets | % with giant | Innermost a (au) | Median a (au) |
 |---|---|---|---|---|---|---|
-| subgiant (log g ≥ 3.5) | 1,068 | 3.2 | 72 | 16 | 0.015 | 0.66 |
-| RGB (log g < 3.5) | 879 | 2.9 | 69 | 18 | 0.017 | 0.76 |
-| core-He burning | 636 | 1.4 | 58 | 20 | 0.17 | 4.5 |
-| AGB | 52 | 1.3 | 60 | 10 | 0.28 | 3.1 |
-| white dwarf | 23,371 | 0.81 | 44 | 14 | 1.7 | 30 |
+| subgiant (log g ≥ 3.5) | 1,068 | 3.2 | 72 | 17 | 0.013 | 0.62 |
+| RGB (log g < 3.5) | 879 | 2.8 | 69 | 18 | 0.024 | 0.78 |
+| core-He burning | 636 | 1.4 | 59 | 23 | 0.16 | 3.7 |
+| AGB | 52 | 1.4 | 62 | 17 | 0.36 | 8.4 |
+| white dwarf | 23,371 | 0.78 | 43 | 12 | 1.8 | 29 |
 
 Giant planets (M sin i ≥ 0.8 MJ) around giant stars of 1–3 M☉, counted at 89–4400 d: Wolthoff's
 detections span 89–3168 d with baselines up to ~12 yr. Until 2026-10-15 the check counted every
@@ -575,51 +622,55 @@ apparent match.
 
 | Mass | Stage | Stars | Model | Wolthoff fit on the model stars |
 |---|---|---|---|---|
-| 1.0–1.5 M☉ | RGB / HB | 607 / 203 | 4.1 / 2.0% | 8.8 / 8.7% |
-| 1.5–2.0 M☉ | RGB / HB | 160 / 142 | 7.5 / 6.3% | 13.4 / 12.8% |
-| 2.0–3.0 M☉ | HB | 234 | 7.7% | 10.0% |
-| all 1–3 M☉ | RGB / HB / all | 795 / 579 / 1,374 | 5.0 / 5.4 / 5.2% | 9.8 / 10.2 / 10.0% |
+| 1.0–1.5 M☉ | RGB / HB | 607 / 203 | 5.3 / 3.4% | 8.8 / 8.7% |
+| 1.5–2.0 M☉ | RGB / HB | 160 / 142 | 9.4 / 8.5% | 13.4 / 12.8% |
+| 2.0–3.0 M☉ | HB | 234 | 8.5% | 10.0% |
+| all 1–3 M☉ | RGB / HB / all | 795 / 579 / 1,374 | 6.4 / 6.7 / 6.6% | 9.8 / 10.2 / 10.0% |
 
-Observed: 10.7 +2.2/−1.6% overall, RGB 14.2 +4.1/−2.7%, HB 6.6 +2.0/−1.3%. Wolthoff's fit is
-f = 12.8% exp(−(M − 1.68)²/(2 · 0.70²)) 10^(1.38 [Fe/H]), evaluated at each model star's mass and
-[Fe/H]. The model is about half of it at all masses, and 3σ below the overall rate.
+Wolthoff's fit is f = 12.8% exp(−(M − 1.68)²/(2 · 0.70²)) 10^(1.38 [Fe/H]), evaluated at each
+model star's mass and [Fe/H]. Before the backlog session the model was about half of it at
+all masses (5.2% overall).
 
-Main-sequence stars of the population in the same window get 5.1% (0.9–1.1 M☉), 6.7% (1.0–1.5)
-and 9.1% (1.5–2.0). At 2 d–10 yr, 0.9–1.1 M☉ stars get 5.9%, near Cumming+2008's 6–9% for
-1–10 MJ. So the shortfall is specific to the giant-star surveys:
-- **Where the rest of the deficit comes from:** the population's giants are metal-poorer than
-  its dwarfs (−0.11 vs −0.02 dex at 1–1.5 M☉; the fit column includes this), and engulfment
-  removes planets inside ~1 au. That explains a factor ~0.6–0.8 relative to the dwarfs.
-- **What it does not explain:** the factor ~2 against the evolved-star surveys. Either
-  occurrence rises faster with stellar mass than Johnson+2010's ∝ M★ (the CLS calibration
-  has few stars above 1.3 M☉), or giant-star masses and planet samples are biased (the
-  "retired A star" mass debate; RV signals of stellar origin in giants). Backlog B23.
+Reweighted to Wolthoff's sample (171 RGB stars of 1.0–1.6 M☉; 311 HB stars spread evenly over
+1–3 M☉, as their HB masses are near-uniform over 1–3.5 M☉; both with their [Fe/H] distribution,
+mean −0.05, SD 0.18):
 
-Giant planets with P < 90 d:
+| Stage | Model | Wolthoff+2022 | Expected hosts at P ≤ 89 d |
+|---|---|---|---|
+| RGB | 7.1% | 14.2 +4.1/−2.7% | 1.5 |
+| HB | 7.0% | 6.6 +2.0/−1.3% | 0.0 |
+| all | 7.0% | 10.7 +2.2/−1.6% | 1.5 (they found none: Poisson p = 0.23) |
 
-| Stellar mass | Giant stars | Main-sequence stars |
-|---|---|---|
-| 1.0–1.5 M☉ | 1.9% | 3.0% |
-| 1.5–2.5 M☉ | 1.8% | 4.1% |
+Close-in giants, giant stars vs main-sequence stars of the same mass: P < 90 d around 1.2% of
+1.0–1.5 M☉ giants (main sequence 2.5%) and 0.2% of 1.5–2.5 M☉ giants (main sequence 1.4%;
+3.0–4.1% before the intermediate-mass period distribution).
 
-The tidal decay removes hot Jupiters once the star reaches a few times their orbit, but the
-survivors are warm giants at 0.1–0.4 au, 6–20 stellar radii from 4–15 R☉ giants, where the
-decay timescale exceeds 10¹⁰ yr even with f = 1. RV surveys of giants find almost none
-there (Johnson+2007; Wolthoff+2022: one planet at 89 d among 37), and subgiants are too
-small to have engulfed them (Bowler+2010). That remains a tension, primordial or
-observational (B23).
+- **What changed:** the intermediate-mass period distribution (§4.3) moves warm giants of
+  ≥ 1.1 M☉ hosts from P < 90 d into the RV window. Main-sequence 1.5–2 M☉ stars now get 13.0%
+  at 89–4400 d (fit: 15.8%; before: 9.1%). Horizontal-branch stars match.
+- **What remains (B23):** RGB stars of ~1.3 M☉, 2.6σ low. There the CLS-calibrated
+  main-sequence rate is ~0.65 of Wolthoff's fit. Their own RGB subset is anomalous in the same
+  way (Jones+2021's common sample: 33% vs 14% from their fit, 3σ). Candidates: RV signals of
+  stellar origin near 600–700 d (γ Dra, Aldebaran), the giant-mass debate (Lloyd 2011;
+  Schlaufman & Winn 2013; lower true masses would widen the gap), or a real excess.
+
+The tidal decay removes hot Jupiters once the star reaches a few times their orbit, but warm
+giants at 6–20 stellar radii of 4–15 R☉ giants are beyond its reach (decay timescale > 10¹⁰ yr
+even with f = 1). Their scarcity around giant stars (Johnson+2007; Wolthoff+2022: one planet
+at 89 d among 37) is therefore primordial: subgiants of the same mass are too small to have
+engulfed them (Bowler+2010). That is what the intermediate-mass period distribution encodes.
 
 White dwarfs (by progenitor mass):
 
 | Progenitor (M☉) | % with planets | % with a planet at 1–10 au | % with giant | Innermost a, 5th percentile (au) | Median innermost a (au) |
 |---|---|---|---|---|---|
-| 0.8–1.5 | 50 | 29 | 11 | 3.0 | 8.0 |
-| 1.5–2.5 | 48 | 14 | 17 | 5.4 | 16 |
-| 2.5–4 | 39 | 1.3 | 16 | 11 | 47 |
-| 4–8 | 29 | 0.0 | 12 | 17 | 79 |
-| all | 44 | 14 | 14 | 3.8 | 18 |
+| 0.8–1.5 | 50 | 29 | 10 | 3.1 | 8.4 |
+| 1.5–2.5 | 46 | 14 | 14 | 5.4 | 16 |
+| 2.5–4 | 37 | 1.4 | 14 | 11 | 46 |
+| 4–8 | 29 | 0.1 | 11 | 18 | 83 |
+| all | 43 | 14 | 12 | 3.8 | 17 |
 
-44% of white dwarfs keep planets, against 25–50% showing metal pollution (Koester+2014). The
+43% of white dwarfs keep planets, against 25–50% showing metal pollution (Koester+2014). The
 innermost survivors lie beyond ~3 au for Sun-like progenitors and ~10 au for 4–8 M☉ (MV12: ~1.5
 and ~10 au; their closer 1 M☉ value is Jovian planets stranded by tides, which needs
 fine-tuning). For the Sun, Earth (engulfed inside 1.51 au) and Neptune-mass planets at 1.5 au
@@ -627,7 +678,7 @@ fine-tuning). For the Sun, Earth (engulfed inside 1.51 au) and Neptune-mass plan
 MIST's AGB radii are smaller than MV12's models at high mass (2.9 vs > 5 au at 5 M☉); the
 engulfment ratios are applied to MIST, so for massive progenitors the model engulfs less.
 
-Pulsar planets: 0–2 around 690 neutron stars in 400,000 systems (0.2% rate).
+Pulsar planets: 0–3 around 690 neutron stars in 400,000 systems (0.2% rate).
 
 ## Backlog B7: planets inside 3 d (`starsys.inner.short`)
 
@@ -643,8 +694,9 @@ fills 0.5 d to each host's HM-C period limit:
   sample.
 - **Properties:** rocky or Neptunian masses, circular orbits, 7° mutual inclinations; spaced 10
   mutual Hill radii from the innermost HM-C planet.
-- **M dwarfs:** phased out with the M-dwarf extension, whose period floor (0.75–1.5 d) was
-  fitted to DC15 and Ment+2023.
+- **M dwarfs:** phased out at 1–3 d with the M-dwarf extension, whose period floor (0.75–1.5 d)
+  was fitted to DC15 and Ment+2023. The USP bin (0.5–1 d) applies to every host below its
+  floor (since 2026-10-15, B8; below 0.1 M☉ scaled like the host fraction).
 - **Flags and boost:** flagged `short_period`; carries the transit-rate single-star boost.
 
 | P (d) | R (R⊕) | Model | Hsu+2019 | Ratio |
@@ -658,15 +710,19 @@ The remaining 2–4 d excess at 1–4 R⊕ and the 4–8 d deficit of sub-Earths
 3–4 d planets alone exceed Hsu's whole 2–4 d bin for 2–6 R⊕). HM-C is the fitted model there,
 so they are left alone (backlog B24).
 
-USPs (P < 1 d, 0.84–4 R⊕), % of main-sequence stars, against Sanchis-Ojeda+2014:
+USPs (P < 1 d, 0.84–4 R⊕), % of main-sequence stars, against Sanchis-Ojeda+2014 (2026-10-15,
+after B8):
 
 | Hosts | Model | Observed |
 |---|---|---|
-| F (6100–7100 K) | 0.15 | 0.15 ± 0.05 |
-| G (5100–6100 K) | 0.56 | 0.51 ± 0.07 |
-| K (4100–5100 K) | 1.01 | 0.83 ± 0.18 |
-| M (3100–4100 K) | 1.80 | 1.10 ± 0.40 |
+| F (6100–7100 K) | 0.14 | 0.15 ± 0.05 |
+| G (5100–6100 K) | 0.58 | 0.51 ± 0.07 |
+| K (4100–5100 K) | 0.92 | 0.83 ± 0.18 |
+| M, early (≥ 0.35 M☉, Kepler-like) | 1.21 | 1.10 ± 0.40 |
+| M, all (3100–4100 K) | 2.66 | — |
 
-The M-dwarf value comes from the M-dwarf extension's period floor, not from this component. It
-is 1.7σ high, the same short-period excess as B8. Sanchis-Ojeda's planets reach 4.2 h, while
-the model starts at 0.5 d.
+Kepler's M dwarfs are mostly early M (DC15: median 0.5 M☉). Before B8 those had almost no
+USPs (~0.3%), because the M-dwarf extension's period floor is 1.5 d there and this
+component was switched off. The all-M value is set by late M dwarfs (floor 0.75 d), where
+TESS agrees (Ment & Charbonneau 0.5–1 d: 0.071 vs 0.047 +0.019/−0.015 planets per star).
+Sanchis-Ojeda's planets reach 4.2 h, while the model starts at 0.5 d.

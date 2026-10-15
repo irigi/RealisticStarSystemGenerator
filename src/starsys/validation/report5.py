@@ -152,7 +152,7 @@ def main(argv=None):
         "",
         "## Flags",
         "",
-        _md(flag_shares(pl).drop(index="moon"), ".1f"),
+        _md(flag_shares(pl), ".1f"),
         "",
         "Every moon carries the `moon` flag and its planet's flags.",
         "",

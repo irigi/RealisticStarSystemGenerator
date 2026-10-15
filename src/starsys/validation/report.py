@@ -284,7 +284,7 @@ def giant_correlations(comp, pl) -> tuple[pd.DataFrame, pd.DataFrame]:
 
 def flag_shares(pl) -> pd.DataFrame:
     rows = [{"flag": name, "% of planets": 100 * np.mean((pl["flags"] & bit) > 0)}
-            for bit, name in planets.FLAG_NAMES.items()]
+            for bit, name in planets.FLAG_NAMES.items() if bit != planets.FLAG_MOON]  # moons only
     rows.append({"flag": "any", "% of planets": 100 * np.mean(pl["flags"] > 0)})
     rows.append({"flag": "any except young", "% of planets": 100 * np.mean((pl["flags"] & ~planets.FLAG_YOUNG) > 0)})
     return pd.DataFrame(rows).set_index("flag")

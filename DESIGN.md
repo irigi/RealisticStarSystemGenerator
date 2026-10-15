@@ -95,9 +95,12 @@ It also exposed that the published catalogs use the Hill-stability AMD criterion
 papers describe; the port defaults to the published behaviour.
 
 Improvements the authors list as limitations, adopted where cheap: per-star ages
-(instead of a fixed 5 Gyr; implemented as an option, `attach_planets(age="star")`)
-and stellar XUV scaling with stellar type (not yet: bolometric flux already scales
-per star, a separate XUV ratio would need α_pret re-fitted).
+(instead of a fixed 5 Gyr; the default since 2026-10-15, `attach_planets(age="star")`, through
+an effective age normalised to HM-C's Kepler fit and checked against Berger+2020's radius
+valley vs age) and stellar XUV scaling with stellar type (not yet: bolometric flux already
+scales per star, a separate XUV ratio would need α_pret re-fitted). HM-C's masses above ~4 R⊕
+are rescaled to RV measurements (Otegi+2020; `starsys.inner.rv_masses`), as Kepler constrains
+only radii there.
 
 Attachment to model stars (`starsys.planets`): host colour from Teff via the Mamajek
 dwarf sequence with a Kepler-calibrated offset and scatter; validated on Kepler stars
@@ -154,9 +157,12 @@ dwarf sequence with a Kepler-calibrated offset and scatter; validated on Kepler 
 
 - **Derived planet properties:** orbit-averaged insolation from every star of the system,
   equilibrium temperature, Kopparapu+2014 habitable zone (several stars combined as
-  Haghighipour & Kaltenegger 2013), and a tidal-locking spin state (Gladman+1996 despinning
-  time, Q and k2 by planet type). Kozai–Lidov cycles from stellar companions, quenched by GR
-  and planet–planet precession. Tidal decay on the giant branches (Villaver & Livio 2009).
+  Haghighipour & Kaltenegger 2013), the time spent in an early runaway greenhouse while the
+  young star was brighter (Luger & Barnes 2015, from MIST histories), and spin: primordial
+  spins (Kokubo & Genda 2010 for rocky planets) slowed by the stellar tide (Gladman+1996),
+  giving tidal locking, rotation periods and obliquities. Kozai–Lidov cycles from stellar
+  companions, quenched by GR and planet–planet precession. Tidal decay on the giant branches
+  (Villaver & Livio 2009).
 - **Moons** (theory-driven; no exomoon detections to fit):
   - giant planets: regular satellite systems with a total mass ratio ~2e-4 (Canup & Ward
     2006) and 0–5 moons (Cilibrasi+2018);
@@ -165,6 +171,7 @@ dwarf sequence with a Kepler-calibrated offset and scatter; validated on Kepler 
     masses (Nakajima+2022);
   - survival: Hill stability (Domingos+2006) and tidal migration, including the loss of moons
     around close-in planets (Barnes & O'Brien 2002);
+  - tidal heating of moons held eccentric in 2:1 chains (Io-like);
   - Kepler exomoon non-detections (Teachey+2018) as an upper-limit check.
 
 ### 3.5 Conditioning on a real star
