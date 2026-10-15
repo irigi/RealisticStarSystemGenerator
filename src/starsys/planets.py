@@ -51,8 +51,15 @@ sequence, and brown dwarfs (no giants below 0.1 Msun).
   field averages.
 - **Evolved stars and remnants** (:mod:`starsys.evolved`, ``evolved=`` option): subgiants,
   giants and white dwarfs get the planets of their main-sequence progenitor, minus those
-  engulfed (Mustill & Villaver 2012), on orbits widened by the mass lost; neutron stars get
-  rare pulsar planets ("pulsar"); black holes none.
+  engulfed (Mustill & Villaver 2012) or dragged in by tides on the giant branches (Villaver &
+  Livio 2009), on orbits widened by the mass lost; their giant planets are re-inflated by the
+  present flux. Neutron stars get rare pulsar planets ("pulsar"); black holes none.
+- **Kozai-Lidov cycles** (``BinaryModel.kozai``): S-type planets inclined to a companion's
+  orbit get the eccentricity of a random phase of the cycle, unless GR or the other planets
+  quench it; planets driven into the star or out of the stability limit are removed.
+- **Derived properties** (:mod:`starsys.derived`, ``derived=`` option): insolation,
+  equilibrium temperature, habitable zone and spin state. Moons are attached separately by
+  :func:`starsys.moons.attach_moons`.
 
 Extrapolation is recorded per planet in the ``flags`` bit mask (``FLAG_*`` below).
 """

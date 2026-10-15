@@ -150,15 +150,22 @@ dwarf sequence with a Kepler-calibrated offset and scatter; validated on Kepler 
   main-sequence state, MIST maximum radii, Mustill & Villaver (2012) tidal engulfment
   ratios, adiabatic expansion; rare flagged pulsar planets; none for black holes.
 
-### 3.4 Moons (theory-driven; no exomoon detections to fit)
+### 3.4 Derived properties and moons (built in phase 5; `starsys.derived`, `starsys.moons`)
 
-- Giant planets: regular satellite systems with total mass ratio ~1e-4
-  (Canup & Ward 2006) and Galilean-like architectures; irregular captured moons.
-- Terrestrial planets: giant-impact moons with an occurrence probability from
-  simulations (e.g. Elser+2011), and capture.
-- Survival: Hill stability (prograde moons within ~0.5 R_Hill, Domingos+2006) and
-  tidal-migration loss for close-in planets (Barnes & O'Brien 2002; Sasaki+2012).
-- Kepler exomoon non-detections (Teachey+2018) used as an upper-limit sanity check.
+- **Derived planet properties:** orbit-averaged insolation from every star of the system,
+  equilibrium temperature, Kopparapu+2014 habitable zone (several stars combined as
+  Haghighipour & Kaltenegger 2013), and a tidal-locking spin state (Gladman+1996 despinning
+  time, Q and k2 by planet type). Kozai–Lidov cycles from stellar companions, quenched by GR
+  and planet–planet precession. Tidal decay on the giant branches (Villaver & Livio 2009).
+- **Moons** (theory-driven; no exomoon detections to fit):
+  - giant planets: regular satellite systems with a total mass ratio ~2e-4 (Canup & Ward
+    2006) and 0–5 moons (Cilibrasi+2018);
+  - ice giants: captured Triton-like moons;
+  - terrestrial planets: giant-impact moons in ~1 of 12 (Elser+2011), only below ~6 Earth
+    masses (Nakajima+2022);
+  - survival: Hill stability (Domingos+2006) and tidal migration, including the loss of moons
+    around close-in planets (Barnes & O'Brien 2002);
+  - Kepler exomoon non-detections (Teachey+2018) as an upper-limit check.
 
 ### 3.5 Conditioning on a real star
 
@@ -186,7 +193,8 @@ dwarf sequence with a Kepler-calibrated offset and scatter; validated on Kepler 
 3. **Star population synthesis** + 10/20-pc calibration.
 4. **Extensions** (M dwarfs, giants, cold small planets, binaries, evolved stars).
 5. **Moons** and derived planet properties (T_eq, insolation, tidal locking,
-   habitable-zone flags).
+   habitable-zone flags), plus Kozai–Lidov cycles and tidal decay around giant stars (done
+   2026-10-15).
 6. **Real-star conditioning** + survey-sensitivity models.
 7. **Learned components** (amortised conditioning, detection emulators) — added
    where profiling shows they pay off.

@@ -5,7 +5,8 @@ summary below collects every check. The sections after it give the details step 
 (4.1–4.6); numbers in a section are from the time of that step unless it says otherwise.
 The generated whole-population report, with occurrence by host type, the Kepler comparison
 and the extrapolation map, is [phase4_report.md](phase4_report.md)
-(`python -m starsys.validation.report`).
+(`python -m starsys.validation.report`). Phase 5 (derived properties, Kozai–Lidov, moons, tidal
+decay on the giant branches) is validated in [phase5.md](phase5.md).
 
 ## Phase 4 summary (2026-10-14)
 

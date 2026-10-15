@@ -1,14 +1,19 @@
-# Next steps (as of 2026-10-14)
+# Next steps (as of 2026-10-15)
 
-Status: phases 1–3 of `DESIGN.md` are done and committed on branch `rewrite-starsys`
-(data layer, validated HM-C port, stellar population validated against the 20-pc
-census). Phase 4 (attaching planets to stars) is done (4.1–4.7); the backlog below holds its follow-ups.
+Status: phases 1–5 of `DESIGN.md` are done. Phases 1–4 are merged into `main`; phase 5 is on
+branch `phase5`. Done so far:
+- phases 1–3: data layer, validated HM-C port, stellar population validated against the 20-pc
+  census;
+- phase 4: attaching planets to stars (4.1–4.7);
+- phase 5: derived properties, Kozai–Lidov, moons, and tidal decay on the giant branches.
+
+The backlog below holds the follow-ups. Next is phase 6 (real-star conditioning).
 
 ## Resuming
 
 ```bash
 source .venv/bin/activate
-pytest -q                                  # 41 tests, all should pass
+pytest -q                                  # 55 tests, all should pass
 python -m starsys.validation.census        # stellar population vs 20-pc census
 python -m starsys.validation.hmc --catalogs 6-25 --criterion hill   # HM-C port check
 python -m starsys.validation.planets --catalogs 1-30                # planet glue on Kepler stars
@@ -19,12 +24,17 @@ python -m starsys.validation.binaries                               # suppressio
 python -m starsys.validation.evolved                                # giant stars, white dwarfs, engulfment
 python -m starsys.validation.short                                  # planets inside 3 d vs Hsu+2019, Sanchis-Ojeda+2014
 python -m starsys.validation.report                                 # whole-population phase 4 report (writes docs)
+python -m starsys.validation.derived                                # insolation, HZ, spin, Kozai-Lidov
+python -m starsys.validation.moons                                  # moons vs Solar System, Teachey+2018
+python -m starsys.validation.report5                                # phase 5 report (writes docs)
 ```
 
 `catalogs/` and `data/` are gitignored. If `data/` is lost, rebuild the SysSim
 parquet cache with `python -m starsys.cache <models>`; the MIST grid and primary-mass
 weights under `data/stellar/` are rebuilt on first use, as are the HM-C edge table under
-`data/outer/` (~2 min) and the single-star boost table under `data/binaries/` (~15 s).
+`data/outer/` (~2 min), the single-star boost table under `data/binaries/` (~15 s) and the
+Kozai–Lidov cycle table, also under `data/binaries/` (~6 min). The MIST grid gained a helium
+core-mass column in phase 5; an older cached grid is rebuilt automatically (~10 s).
 
 ## Phase 4, in recommended order
 
@@ -159,6 +169,32 @@ writes `docs/validation/phase4_report.md`, plus figures in `docs/validation/figu
 The whole population reproduces the published HM-C inner occurrence for a Kepler-like sample
 (2.36 vs 2.38 planets per star, all P–R cells within 1σ). 35% of planets carry an
 extrapolation flag. Attaching planets takes ~17–20 s per 100,000 systems.
+
+## Phase 5 — done (2026-10-15)
+
+Details and verdicts: `docs/validation/phase5.md`; generated tables:
+`docs/validation/phase5_report.md`.
+
+- **5.1 Tidal decay on the giant branches** (`starsys.evolved.tidal_decay`; B23).
+  - The equilibrium tide (Villaver & Livio 2009) is integrated along the host's past, read off a
+    MIST isochrone (helium core masses added to the grid). Planets are engulfed when the star
+    fills its Roche lobe.
+  - Matches MV12's engulfment radii to ~20%.
+  - The giant-star check now counts only RV-detectable periods. That turned the earlier match
+    into a factor-2 deficit (B23).
+- **5.2 Derived properties** (`starsys.derived`, `derived=` option).
+  - Orbit-averaged insolation from all stars, T_eq, Kopparapu+2014 habitable zone (stars
+    combined as Haghighipour & Kaltenegger 2013), tidal-locking spin states.
+  - Giants of evolved hosts are re-inflated by the present flux.
+  - Recomputed insolation matches the archive's `pl_insol` (median 1.000).
+- **5.3 Kozai–Lidov cycles** (`BinaryModel.kozai`).
+  - Quadrupole test-particle cycles, quenched by GR and by the other planets' forced precession.
+  - Eccentricities are drawn from a cached cycle table.
+  - Planets driven into the star or out of the HW99 limit are removed.
+  - Only 3% of giants cycle; the giant eccentricity prior did not need a refit.
+- **5.4 Moons** (`starsys.moons.attach_moons`): regular satellites, giant-impact moons and
+  captured moons, with tidal and Hill-sphere survival. Checked against the Solar System,
+  Elser+2011 and Teachey+2018.
 
 ## Backlog: inner-system refinements (from 4.1/4.2)
 
@@ -299,10 +335,43 @@ Host mapping and age (from 4.1, low priority):
   at high [Fe/H] for P < 10 d (Petigura+2018). Consider a flagged tilt now that 4.3
   has metallicity scaling for giants.
 
-## After phase 4
+From phase 5:
 
-- **Phase 5:** moons and derived properties (T_eq, insolation, tidal locking,
-  habitable-zone flags). See `DESIGN.md` §3.4.
+- **B25** Small-planet envelopes around evolved hosts are left as on the main sequence. Giant
+  stars are bright, but their XUV output, which drives envelope loss, is unconstrained. Only
+  giant-planet radii are recomputed (re-inflation).
+- **B26** Kozai–Lidov: RV giants with a known stellar companion have a higher mean eccentricity
+  than those without (NASA archive: 0.32 vs 0.25, 74 vs 332 planets at 0.1–5 au). The model
+  gives none (0.217 vs 0.213), because GR and the planets' mutual precession quench the cycles
+  unless the companion is within ~200 au.
+  - Candidates: the octupole (eccentric) KL effect for eccentric companions; planet–planet
+    scattering triggered by the companion; selection effects in the archive.
+  - High-eccentricity migration into hot Jupiters is not modelled: such planets are removed,
+    because hot-Jupiter rates are already calibrated.
+- **B27** Moons of warm giants: 61% of giants larger than 6 R⊕ at 0.1–1 au carry a moon of
+  ≥ 0.2 R⊕, while Teachey+2018 find η < 0.38 (95%) for Galilean analogues.
+  - Teachey's sample was chosen for moon detectability, which favours large planets.
+  - Next step: rebuild their sample's radius distribution.
+  - If the tension holds, add moon loss during disk migration (evection resonance,
+    Spalding+2016).
+- **B28** Moons not modelled:
+  - small irregular moons (each giant has ~100 above 1 km) and captured asteroids such as
+    Phobos;
+  - tidal heating (Io), and the obliquity of moons and planets;
+  - moons of circumbinary planets beyond the single-star treatment.
+  - Moon composition uses a fixed circumplanetary ice line.
+- **B29** Habitable zone:
+  - Kopparapu's fits are clamped outside 2600–7200 K (7% of planets flagged: brown dwarfs, late
+    M dwarfs, white dwarfs, A stars).
+  - The HZ is computed for present-day luminosity. Pre-main-sequence water loss for M-dwarf
+    planets (Luger & Barnes 2015) and the evolution of the HZ are not modelled; this connects
+    to `age="star"` (B2).
+- **B30** Spin: tidal Q and k₂ are order-of-magnitude values by planet type. Planets not yet
+  locked are given only "free", with no rotation period. Atmospheric thermal tides (Venus) and
+  obliquity are not modelled.
+
+## After phase 5
+
 - **Phase 6:** real-star conditioning (SIMBAD/Gaia/TIC lookup, NASA archive,
   per-method survey sensitivity, importance sampling). See §3.5.
 - **Phase 7:** LightGBM emulators only where profiling shows they pay off. No torch.
@@ -317,5 +386,6 @@ Host mapping and age (from 4.1, low priority):
 
 ## Housekeeping
 
-- `main` has only the initial commit. Merge `rewrite-starsys` once phase 4 is in
-  shape. `gh` is not installed; use the GitHub API with curl or the web UI.
+- Phases 1–4 were merged into `main` on 2026-10-15 as a fast-forward; phase 5 is on `phase5`.
+  Nothing has been pushed: `origin/main` no longer exists on the remote. `gh` is not
+  installed; use the GitHub API with curl or the web UI.
