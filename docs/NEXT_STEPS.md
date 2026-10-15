@@ -27,21 +27,24 @@ of it in drawing prior systems; the importance sampling itself reaches ESS 200 e
 
 ## Phase 6 (done, branch `phase6`)
 
-**Handoff (2026-10-15, session paused).** Step 3 (surveys) and step 4 (validation) are coded
-and committed as work in progress; what is left:
-1. `pytest -q`: 79 passed on the committed code (2026-10-15).
-2. Run `python -m starsys.validation.real --injection 100` and `--holdout 30 --no-gaia`
-   (5–15 min each) and write `docs/validation/phase6.md`: summary table (stellar benchmarks
-   with pulls, injection calibration per period/mass bin, hold-out posterior/prior ratio,
-   runtime 5–35 s per star), plus the known limits from `docs/ASSUMPTIONS.md` "Real stars".
-   First results (40 injected stars): predicted unseen planets match the truth in all 8 bins
-   within ~1.5σ; stellar benchmarks within 1σ except Vega age (2.5σ, fast rotator) and
-   Procyon B (IFMR); Sirius B was wrong with a contaminated Gaia white-dwarf solution, now
-   guarded (re-check: expect ~0.2 Gyr, ~26,000 K).
-3. Quick checks still to do: `python -m starsys.real "bet Pic"` after the hot-star RV
-   change; `Kepler-444` companions are now stellar (≥ 0.08 M☉).
-4. Commit "Phase 6.3/6.4", update memory `project-state.md`, then step 4 of the plan
-   (usability, A9).
+Validated 2026-10-15 (`docs/validation/phase6.md`):
+- stellar benchmarks within 1.1σ except Vega's age (2.5σ, fast rotator) and Procyon B
+  (IFMR);
+- the 100-star injection test recovers the unseen planets in all 8 period/mass bins within
+  1σ;
+- the Kepler hold-out gives the hidden planet a 1.9× higher probability than the prior
+  (median).
+
+Companions of stars beyond 20 pc now take their separations, and A,BC hierarchies, from the
+WDS by position.
+
+Where the model rarely makes a known system, the known planets are inserted rather than
+matched. The insertion fractions show where this happens:
+- wide giants around A stars (β Pic, HR 8799);
+- outer giants in compact multis (Kepler-90);
+- sub-Earth chains (Kepler-444).
+
+These are candidates for later work on the planet model, not phase-6 issues.
 
 `python -m starsys.real NAME` (package `src/starsys/real/`): star lookup and fit (`catalog`,
 `star`), known planets (`known`), survey sensitivity (`surveys`), conditioning (`condition`).
@@ -55,7 +58,7 @@ Validation and known limits: `docs/validation/phase6.md`; assumptions: `docs/ASS
 
 ```bash
 source .venv/bin/activate
-pytest -q                                  # all tests should pass
+pytest -q                                  # all tests should pass (81)
 python -m starsys.validation.census        # stellar population vs 20-pc census
 python -m starsys.validation.hmc --catalogs 6-25 --criterion hill   # HM-C port check
 python -m starsys.validation.planets --catalogs 1-30                # planet glue on Kepler stars

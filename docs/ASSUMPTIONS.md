@@ -192,7 +192,10 @@ because hot-Jupiter rates are already calibrated.
   7,740 K).
 - **Multiplicity.** Within 20 pc the census is taken as complete for stellar companions.
   Beyond, a star is single unless the NASA archive (`sy_snum`) or the Bright Star Catalogue
-  lists companions, whose masses and orbits are then drawn from the population model. Census
+  lists companions, whose masses are then drawn from the population model; their projected
+  separations come from the WDS system at the star's position where it lists pairs with
+  component A (an "A,BC" pair, or AB and AC at one separation, becomes a 2+1 hierarchy with the
+  inner pair unresolved), else any separation. Census
   hierarchies are mapped onto the generator's chain; 2+2 systems (Castor) become chains, with
   a flag. Companion orbits come from the projected separation (WDS or census positions) with
   a random phase, eccentricity and inclination; orbits from the visual-binary catalogue (ORB6)

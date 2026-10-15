@@ -17,6 +17,22 @@ def test_name_keys():
     assert names.bsc_name_key("Alp1Cen") == "alf1cen" and names.bsc_name_key("58Alp Lyr") == "alflyr"
 
 
+def test_wds_companion_labels():
+    assert ct._wds_companions("AB") == ("B", 1) and ct._wds_companions("Aa,Ab") == ("Ab", 1)
+    assert ct._wds_companions("A,BC") == ("BC", 2) and ct._wds_companions("A,Bab") == ("Bab", 2)
+    assert ct._wds_companions(None) == ("B", 1)  # an unlabelled WDS pair is AB
+    assert ct._wds_companions("BC")[1] == 0 and ct._wds_companions("Ba,Bb")[1] == 0
+
+
+def test_unknown_companions_from_wds():
+    # Beyond 20 pc: NASA reports three stars; the WDS has A,BC at 1.8" (Dupuy+2016).
+    r = ct.find("Kepler-444", use_gaia=False)
+    assert r.star.name == "Kepler-444" and r.target == 2
+    assert r.separations[1][1] == "unresolved" and r.separations[2][0] == pytest.approx(1.8, abs=0.1)
+    r = ct.find("16 Cyg B", use_gaia=False)  # B's only measured pair is with A
+    assert r.separations[1][0] == pytest.approx(40, abs=2) and r.separations[2][1] == "unknown"
+
+
 def test_lookup_systems():
     r = ct.find("Proxima Centauri", use_gaia=False)
     assert [c.name for c in r.components] == ["alpha Cen A", "alpha Cen B", "Proxima Centauri"]

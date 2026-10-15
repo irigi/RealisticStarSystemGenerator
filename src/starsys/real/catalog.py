@@ -759,13 +759,92 @@ def _position_separation(c0: ComponentRecord, c1: ComponentRecord) -> float:
     return sep if sep > 0.05 else np.nan
 
 
+@lru_cache(maxsize=1)
+def _wds_positions() -> tuple[np.ndarray, np.ndarray]:
+    w = wds()
+    ra = np.array([_sexa(v, 15.0) for v in w["RAJ2000"]])
+    dec = np.array([_sexa(v, 1.0) for v in w["DEJ2000"]])
+    return ra, dec
+
+
+WDS_MATCH_ARCSEC = 20.0  # WDS positions are rounded and epoch 2000; covers ~1"/yr proper motions
+
+
+def wds_pairs_at(ra: float, dec: float) -> list[tuple[str, int, float]]:
+    """WDS pairs with component A of the WDS system nearest to (ra, dec) within ``WDS_MATCH_ARCSEC``:
+    (secondary label such as "B", "Ab" or "BC", number of stars in it, latest separation in arcsec),
+    closest first."""
+    if not (np.isfinite(ra) and np.isfinite(dec)):
+        return []
+    wra, wdec = _wds_positions()
+    near = np.abs(wdec - dec) < WDS_MATCH_ARCSEC / 3600.0
+    if not near.any():
+        return []
+    idx = np.flatnonzero(near)
+    dra = (wra[idx] - ra) * np.cos(np.radians(dec))
+    d = np.hypot(dra, wdec[idx] - dec) * 3600.0
+    ok = d < WDS_MATCH_ARCSEC
+    if not ok.any():
+        return []
+    w = wds()
+    wid = w["WDS"].iloc[idx[np.argmin(np.where(ok, d, np.inf))]]
+    rows = w[w["WDS"] == wid]
+    out = []
+    for comp, sep in zip(rows["Comp"], pd.to_numeric(rows["sep2"], errors="coerce")):
+        second, n = _wds_companions(comp)
+        if n and np.isfinite(sep) and sep < 999.0:
+            out.append((second, n, float(sep)))
+    return sorted(out, key=lambda x: x[2])
+
+
+def _wds_companions(comp) -> tuple[str, int]:
+    """Secondary of a WDS pair measured from component A and its number of stars ("AB", "Aa,Ab": 1;
+    "A,BC", "A,Bab": 2); ("", 0) if the pair does not involve A itself."""
+    comp = "AB" if not isinstance(comp, str) or not comp.strip() else comp.replace(" ", "")
+    if "," in comp:
+        first, second = comp.split(",", 1)
+    elif re.fullmatch(r"[A-Z]{2}", comp):
+        first, second = comp[0], comp[1]
+    else:
+        return "", 0
+    if first not in ("A", "Aa") or not second.isalpha():
+        return "", 0
+    if re.fullmatch(r"[A-Z][a-z]?", second):
+        return second, 1
+    if re.fullmatch(r"[A-Z]{2}|[A-Z][a-z]{2}", second):
+        return second, 2
+    return "", 0
+
+
 def _with_unknown_companions(rec: SystemRecord) -> SystemRecord:
     """Placeholders for companions a catalogue reports without parameters (beyond 20 pc: the NASA
-    archive's ``sy_snum``); their masses and orbits come from the population model."""
-    for k in range(len(rec.components), rec.n_stars_reported):
-        rec.components.append(ComponentRecord(name=f"{rec.components[0].name} companion {k}", kind_hint="star",
-                                               distance_pc=rec.components[0].distance_pc))
-        rec.separations[k] = (np.nan, "unknown")
+    archive's ``sy_snum``); their masses and orbits come from the population model. Where the WDS
+    lists pairs with the target's component A, those set the separations (and, for an "A,BC" pair,
+    a 2+1 hierarchy: the inner pair is placed first and the target orbits it)."""
+    n_new = rec.n_stars_reported - len(rec.components)
+    if n_new <= 0:
+        return rec
+    base = rec.components[0]
+    new = [ComponentRecord(name=f"{base.name} companion {k + 1}", kind_hint="star", distance_pc=base.distance_pc)
+           for k in range(n_new)]
+    pairs = wds_pairs_at(base.ra, base.dec)
+    letter = re.search(r"\s([B-F])$", base.name)
+    if letter:  # the target is a WDS secondary: only its pair with A applies
+        pairs = [p for p in pairs if p[0] == letter.group(1)][:1]
+    singles = [(k, s) for k, n, s in pairs if n == 1]
+    doubles = [(k, s) for k, n, s in pairs if n == 2]
+    if n_new == 2 and len(singles) == 2 and singles[1][1] < 1.15 * singles[0][1]:
+        doubles, singles = [("BC", singles[0][1])], []  # AB and AC at one separation: A,BC
+    if n_new == 2 and doubles and not singles:  # A,BC: B and C unresolved, A around them
+        rec.components = new + [base]
+        rec.target = 2
+        rec.separations = {1: (np.nan, "unresolved"), 2: (doubles[0][1], "WDS")}
+        return rec
+    rec.components.extend(new)
+    seps = [s for _, s in singles][:n_new]
+    for k in range(1, rec.n_stars_reported):
+        j = k - 1
+        rec.separations[k] = (seps[j], "WDS") if j < len(seps) else (np.nan, "unknown")
     return rec
 
 
