@@ -45,6 +45,13 @@ own flags are carried over. Three kinds:
 Close-in planets therefore lose their moons, and impact moons migrate out like the Moon (an
 Earth analogue's moon ends near 50 Earth radii after 4.6 Gyr with Q = 100, k2 = 0.3).
 
+**Tidal heating:** a regular moon in a 2:1 period ratio with a neighbour keeps a forced
+eccentricity (the Laplace resonance holds Io at 0.004, Europa at 0.009 and Ganymede at 0.001),
+drawn log-uniform over 0.001-0.01; other moons are circular. The heat dissipated in the moon is
+E = (21/2) (k2/Q) G M_p^2 R_m^5 n e^2 / a^6 (Peale+1979; Segatz+1988) with Io's k2/Q = 0.015
+(Lainey+2009): Io itself gives 9e13 W, 2.2 W/m^2 (observed ~1e14 W). ``tidal_heating_w`` and
+``heat_flux_w_m2`` (the Earth's internal heat flow is 0.09 W/m^2).
+
 Planets of evolved hosts are treated on their present orbits (a moon that survives there is
 kept). Moons are not given to circumbinary or pulsar planets differently from others.
 """
@@ -93,6 +100,9 @@ class MoonModel:
     capture_min_a_au: float = 1.0
     capture_ratio_range: tuple = (3e-5, 3e-4)
     capture_a_rp: tuple = (10.0, 20.0)
+    # Tidal heating of resonant moons.
+    forced_ecc_range: tuple = (0.001, 0.01)
+    moon_k2_q: float = 0.015  # Io (Lainey+2009)
     # Stability (Domingos+2006).
     hill_prograde: tuple = (0.4895, 1.0305)
     hill_retrograde: tuple = (0.9309, 1.0764)
@@ -113,15 +123,16 @@ def _draw(planets, rng, model: MoonModel, t_eq0):
     rp = np.asarray(planets["planet_radius"], dtype=float)
     kind = dv.planet_kind(mp, rp, planets["lost_envelope"])
     n = len(mp)
-    out = {k: [] for k in ("planet", "kind", "mass", "a_rp", "incl", "icy")}
+    out = {k: [] for k in ("planet", "kind", "mass", "a_rp", "incl", "icy", "ecc")}
 
-    def add(planet, kind_name, mass, a_rp, incl, icy):
+    def add(planet, kind_name, mass, a_rp, incl, icy, ecc=None):
         out["planet"].append(planet)
         out["kind"].append(np.full(len(planet), kind_name, dtype=object))
         out["mass"].append(mass)
         out["a_rp"].append(a_rp)
         out["incl"].append(incl)
         out["icy"].append(icy)
+        out["ecc"].append(np.zeros(len(planet)) if ecc is None else ecc)
 
     a_au = np.asarray(planets["a_au"], dtype=float)
     # Captured moons first: they rule out regular satellites.
@@ -154,7 +165,11 @@ def _draw(planets, rng, model: MoonModel, t_eq0):
         a_rp = a_inner * np.exp((cum - np.repeat(cum[first], counts)) * 2.0 / 3.0)
         ice_line = model.ice_line_rp * np.sqrt(mp[host] / JUPITER_MASS_EARTH)
         icy = (a_rp > ice_line) & (t_eq0[host] < model.ice_teq)
-        add(host, KIND_REGULAR, mass, a_rp, np.radians(rng.random(len(host))), icy)
+        # Moons in a 2:1 with a neighbour (inside or outside) keep a forced eccentricity.
+        res = ratio == 2.0
+        res[:-1] |= ratio[1:] == 2.0
+        ecc = np.where(res, _log_uniform(*model.forced_ecc_range, len(host), rng), 0.0)
+        add(host, KIND_REGULAR, mass, a_rp, np.radians(rng.random(len(host))), icy, ecc)
     # Giant-impact moons.
     lo, hi = model.impact_mass_range
     imp = np.flatnonzero((kind == 0) & (mp >= lo) & (mp <= hi) & (rng.random(n) < model.impact_prob))
@@ -210,8 +225,9 @@ def attach_moons(planets, components, seed=None, model: MoonModel = MoonModel(),
     Returns a dict of per-moon arrays sorted by planet and orbit: ``planet`` (row index into
     ``planets``), ``system``, ``component``, ``kind`` ("regular", "impact", "captured"),
     ``mass`` (Earth masses), ``radius`` (Earth radii), ``a_rp`` (planet radii), ``a_km``,
-    ``period`` (days), ``ecc``, ``incl`` (rad, to the planet's equator; > pi/2 retrograde),
-    ``composition`` ("ice" or "rock") and ``flags`` (the planet's flags plus ``moon``).
+    ``period`` (days), ``ecc`` (forced, resonant moons only), ``incl`` (rad, to the planet's
+    equator; > pi/2 retrograde), ``tidal_heating_w``, ``heat_flux_w_m2``, ``composition``
+    ("ice" or "rock") and ``flags`` (the planet's flags plus ``moon``).
     """
     rng = np.random.default_rng(seed)
     n = len(planets["a_au"])
@@ -233,9 +249,14 @@ def attach_moons(planets, components, seed=None, model: MoonModel = MoonModel(),
     a_m = a_rp * rp_km * 1e3
     period = 2 * math.pi * np.sqrt(a_m**3 / (G_SI * (mp + m["mass"] * EARTH_MASS_KG))) / 86400.0
     radius = _radius_earth(m["mass"], np.where(m["icy"], model.rho_ice, model.rho_rock))
+    # Tidal heating: E = 21/2 (k2/Q) G M_p^2 R_m^5 n e^2 / a^6.
+    r_m = radius * EARTH_RADIUS_M
+    n_orb = 2 * math.pi / (period * 86400.0)
+    heat = 10.5 * model.moon_k2_q * G_SI * mp**2 * r_m**5 * n_orb * m["ecc"] ** 2 / np.maximum(a_m, 1.0) ** 6
     res = {"planet": p, "system": np.asarray(planets["system"])[p], "component": np.asarray(planets["component"])[p],
            "kind": m["kind"], "mass": m["mass"], "radius": radius, "a_rp": a_rp, "a_km": a_rp * rp_km,
-           "period": period, "ecc": np.zeros(len(p)), "incl": m["incl"],
+           "period": period, "ecc": m["ecc"], "incl": m["incl"], "tidal_heating_w": heat,
+           "heat_flux_w_m2": heat / (4 * math.pi * r_m**2),
            "composition": np.where(m["icy"], "ice", "rock").astype(object),
            "flags": (np.asarray(planets["flags"])[p] | FLAG_MOON).astype(np.int32)}
     order = np.lexsort((res["a_rp"], res["planet"]))

@@ -18,6 +18,8 @@
   half is the more representative comparison.
 - **Survival vs orbit:** fraction of giant planets with moons and of rocky planets with an
   impact moon by semi-major axis and host type (Barnes & O'Brien 2002: close-in planets lose them).
+- **Tidal heating:** resonant regular moons with a heat flux above the Earth's internal heat
+  flow (Io: 2.5 W/m^2, Europa ~0.1-0.2 W/m^2).
 - **Large moons in habitable zones:** moons of >= 0.1 Earth masses (able to hold an atmosphere
   for Gyr; Williams+1997, Heller+2014) around planets in the conservative habitable zone, per star.
 
@@ -156,6 +158,12 @@ def census(comp, pl, m) -> pd.DataFrame:
     big = (m["mass"] >= 0.1) & hz[m["planet"]]
     rows.append({"kind": "moons >= 0.1 Earth masses in the conservative HZ, per 1000 main-sequence stars",
                  "moons per 1000 planets": 1000 * big.sum() / max(n_stars, 1)})
+    hot = m["heat_flux_w_m2"] > 0.09
+    rows.append({"kind": "tidally heated above the Earth's internal heat flow (0.09 W/m^2)",
+                 "moons per 1000 planets": 1000 * hot.sum() / len(pl["a_au"]),
+                 "median mass (Earth)": np.median(m["mass"][hot]) if hot.any() else np.nan,
+                 "median a (planet radii)": np.median(m["a_rp"][hot]) if hot.any() else np.nan,
+                 "% icy": 100 * np.mean(m["composition"][hot] == "ice") if hot.any() else np.nan})
     return pd.DataFrame(rows).set_index("kind")
 
 

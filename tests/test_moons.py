@@ -77,3 +77,15 @@ def test_population_moons():
     assert (m["incl"][captured] > math.pi / 2).all()
     # A captured moon replaces the regular satellites.
     assert not np.isin(m["planet"][captured], m["planet"][m["kind"] == "regular"]).any()
+
+
+def test_resonant_moons_are_tidally_heated():
+    pl, comp = _planets(4000, 5.2, 317.8, 11.2)
+    m = moons.attach_moons(pl, comp, seed=3)
+    res = m["ecc"] > 0
+    assert res.any() and (~res).any()
+    assert ((m["ecc"][res] >= 0.001) & (m["ecc"][res] <= 0.01)).all()
+    assert (m["tidal_heating_w"][~res] == 0).all() and (m["tidal_heating_w"][res] > 0).all()
+    # Io-like moons (inner, resonant, ~0.015 Earth masses) dissipate ~1e13-1e15 W.
+    io = res & (m["a_rp"] < 8) & (m["mass"] > 0.005)
+    assert 1e12 < np.median(m["tidal_heating_w"][io]) < 1e16
