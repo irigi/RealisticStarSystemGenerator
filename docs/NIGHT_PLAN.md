@@ -41,7 +41,7 @@ unticked item.
 3. [x] **Procedural artwork** (done: `starsys.view.art`; refine if time remains): textures per class (rocky: oceans/continents/ice caps/deserts/
    lava; giants: banded with storms, colour by temperature class (Sudarsky-like); ice giants;
    stars by Teff with limb darkening; moons; rings optional). Seeded per body.
-4. [ ] **Galaxy model** `starsys.galaxy`: research notes in docs; density (thin/thick disc,
+4. [x] **Galaxy model** (done: `starsys.galaxy`; sources in its docstring, summary in ASSUMPTIONS) `starsys.galaxy`: research notes in docs; density (thin/thick disc,
    bar/bulge, halo, log-spiral arms, Sun at ~8.2 kpc), position-dependent age/[Fe/H],
    arm-enhanced young stars; sectors seeded by coordinates, Poisson counts, system seed =
    hash(sector, j). Sources for every number in docs/ASSUMPTIONS.md.
@@ -77,3 +77,13 @@ unticked item.
   physics). Giant palettes follow Sudarsky classes; star colours are blackbody, saturated x2.2
   for display. Real-star planets keep catalogue names but rows show the suffix ("b").
 - D5 (item 2): `--real NAME` shows the conditioned realisations; Previous/Next walk them.
+- D6 (item 4): spiral arms = Reid et al. (2019) Table 2 within measured azimuths, the four
+  major arms extended at their mean 10° pitch from 3 to 15 kpc, Local arm only ±25° beyond
+  its data. Old-star arm contrast ±15 %, young stars (< 300 Myr) confined to arms.
+- D7 (item 4): halo normalised to its total mass 1.4e9 Msun (Deason+2019) rather than the 0.5 %
+  local fraction (that would triple the halo mass with the Juric+2008 profile); thin-disc scale
+  height 350 pc (upper end of BHG16's 300 ± 50) so the local surface density is closer to
+  McKee+2015. Totals: 8.4e10 systems, ~3.9e10 Msun in stars+remnants (the real Galaxy has
+  ~5e10: the disc comes out ~35 % light; local normalisation from the census was kept).
+- D8 (item 4): sectors are 10-pc cubes (~80 systems near the Sun, ~5600 at the centre); IMF
+  and multiplicity are the local ones everywhere; ages/[Fe/H] by component and radius.

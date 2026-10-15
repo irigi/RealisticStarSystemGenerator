@@ -228,3 +228,14 @@ because hot-Jupiter rates are already calibrated.
 - **Settings:** `condition(surveys=None)` conditions on the known planets only (prior
   everywhere else); `surveys=[...]` replaces the default set; `known=[...]` replaces the
   archive's planets (e.g. to add a candidate or drop one).
+
+## Galaxy model (starsys.galaxy)
+
+The procedural Milky Way (star map) uses an empirical density model; every parameter and
+its source is listed in the `starsys.galaxy` module docstring. In short: R0 = 8.15 kpc and
+spiral arms from maser parallaxes (Reid et al. 2019, arms extended beyond the data at 10°
+pitch), thin/thick disc, bar and IMF-independent normalisations from Bland-Hawthorn &
+Gerhard (2016), halo profile from Juric et al. (2008) normalised to 1.4e9 Msun (Deason et al.
+2019), local density 0.081 systems/pc^3 from the 20-pc census. Assumed, not measured: the
+local IMF and multiplicity everywhere; one [Fe/H] gradient (-0.06 dex/kpc) for all thin-disc
+ages; arm contrast ±15 % for old stars and arm confinement of stars younger than 300 Myr.
