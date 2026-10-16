@@ -26,6 +26,10 @@ not kept as open tasks.
    in `docs/NIGHT_PLAN.md`): PySide6 system viewer with Pioneer-style map, orbit view,
    procedural artwork and Previous/Next over stable IDs; procedural Milky Way with spiral arms;
    real stars blended by catalogue selection functions; 3D star map; A10; moon-heating cap.
+   Second round (2026-10-16, after the first look): one system per real star with a fixed
+   seed, Next/Previous as a random walk through the galaxy, mouse re-centring, artwork at the
+   zoom's resolution, and brightness tiers so that the map keeps the same density of stars
+   from 50 pc to the whole galaxy without a switch to a separate cloud.
 
 ## Next (proposals)
 
@@ -37,6 +41,10 @@ not kept as open tasks.
   (needs a download and its selection function), extinction maps instead of the uniform
   0.7 mag/kpc, the disc's warp and flare; the thin disc's total mass comes out ~35 % low
   against BHG16 with the census normalisation (see NIGHT_PLAN D7).
+- Galaxy map: red giants of low-mass stars (the K giants that fill the real naked-eye sky)
+  are only in the 10-pc sectors; a tier of evolved low-mass stars would show them at kpc
+  scales. The whole galaxy's O/B stars take ~8 s to load (progressively); a disk cache would
+  make that instant.
 - Performance: sector generation is ~1.5 ms per 10-pc sector near the Sun but ~5600 systems
   per sector at the Galactic centre; the map never loads such sectors today (it only loads
   within 45 pc of the view centre), but browsing the bulge would need a coarser level of detail.
@@ -78,7 +86,7 @@ Validation and known limits: `docs/validation/phase6.md`; assumptions: `docs/ASS
 
 ```bash
 source .venv/bin/activate
-pytest -q                                  # all tests should pass (103)
+pytest -q                                  # all tests should pass (109)
 python -m starsys -n 5 --seed 1             # five random systems, printed
 python -m starsys --id S1-42                # one system by its stable ID
 python -m starsys.view                      # system viewer (Previous/Next)

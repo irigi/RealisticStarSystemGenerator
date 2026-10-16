@@ -240,13 +240,29 @@ Gerhard (2016), halo profile from Juric et al. (2008) normalised to 1.4e9 Msun (
 local IMF and multiplicity everywhere; one [Fe/H] gradient (-0.06 dex/kpc) for all thin-disc
 ages; arm contrast ±15 % for old stars and arm confinement of stars younger than 300 Myr.
 
+Brightness tiers (for the star map; the galaxy's content is unchanged): systems whose primary
+is a living star of 1.5-3, 3-8 and >= 8 Msun are drawn in 80, 160 and 1280-pc cells; the
+10-pc sectors hold the rest. The mass edges are round numbers near F0, B9 and B2 main-sequence
+stars; the cell sizes give a few hundred systems per cell near the Sun. Large cells place
+stars on an 8^3 sub-grid of the density. The youngest thin-disc stars are 1 Myr old in the
+galaxy (the local model's 10 Myr minimum would leave no living star above ~20 Msun). The arm
+profile is read from a 25-pc raster of the exact one (error < 0.015). A random system ("Next"
+from the map) is every galaxy system about equally likely: a point from the density, then a
+uniform pick in its cell. Within ~400 pc the map shows more O/B-class real stars than the model
+(74 within 220 pc against ~21 expected): the Gould Belt / Sco-Cen excess is real and kept.
+
 ## Real stars in the star map (starsys.realstars)
 
 Real systems come from the 20-pc census (treated as complete) and the Hipparcos Survey (complete
 to V = 7.9 + 1.1|sin b| before G5, 7.3 + 1.1|sin b| later; ESA 1997). A procedural system is
 removed when these catalogues would list it. Assumed: Hipparcos parallax error 0.9 mas for all
 Survey stars; extinction 0.7 mag/kpc in a 100-pc dust layer; bolometric corrections from the
-Mamajek dwarf table also for giants.
+Mamajek dwarf table also for giants. Census entries without a catalogue Teff (most of them)
+take it from their spectral type. For the map's tiers a real star counts like a procedural
+one of comparable mass: by Teff (7200, 10500, 20000 K for 1.5, 3, 8 Msun; Pecaut & Mamajek
+2013), cool giants (class II-III) as 1.5-3 Msun, supergiants by absolute V (< -4: >= 8 Msun).
+Not represented at large distances: red giants of < 1.5 Msun stars (they are in the 10-pc
+sectors, loaded only near the view centre).
 
 ## Moon tidal heating cap (phase 7)
 
