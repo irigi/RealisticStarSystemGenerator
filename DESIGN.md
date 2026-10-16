@@ -74,7 +74,7 @@ Implemented in `starsys.stars` (validated: `docs/validation/census.md`).
   tables (Bédard+2020); crude NS/BH placeholders.
 - Multiplicity fraction from the census (0.1–1.3 M☉) and Duchêne & Kraus 2013 at
   the mass extremes; separations and mass ratios from Duchêne & Kraus 2013;
-  hierarchical triples/quadruples with ≥3× nested separations.
+  hierarchical triples/quadruples with ≥3× nested separations, stable by Mardling & Aarseth (2001).
 - Spectral types from the Pecaut & Mamajek dwarf sequence plus luminosity class.
 
 ### 3.2 Inner planets, 3–300 d (FGK): HM-C reimplementation
