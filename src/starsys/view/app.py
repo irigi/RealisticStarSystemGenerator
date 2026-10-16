@@ -96,7 +96,7 @@ def passes(bundle, i: int, f: dict) -> bool:
     import numpy as np
 
     from ..__main__ import select
-    if not f:
+    if not f or hasattr(bundle, "system_dict"):  # a fixed real system (the Solar System)
         return True
     g = dict(f)
     multiple, giant = g.pop("multiple", False), g.pop("giant", False)
@@ -246,7 +246,7 @@ class SystemWindow(QMainWindow):
     # --- navigation ---------------------------------------------------------------------
     def load(self, k: int):
         bundle, i = self.source.get(k)
-        d = ex.system_dict(bundle, i)
+        d = bundle.system_dict(i) if hasattr(bundle, "system_dict") else ex.system_dict(bundle, i)
         d["system_id"] = self.source.label(k)
         self.k = k
         self.bundle, self.i = bundle, i
@@ -361,13 +361,15 @@ class SystemWindow(QMainWindow):
         path, _ = QFileDialog.getSaveFileName(self, "Export system", f"{self.source.label(self.k)}.json",
                                               "JSON (*.json)")
         if path:
-            obj = ex.to_json_obj(self.bundle, [self.i])
+            obj = (self.bundle.json_obj() if hasattr(self.bundle, "json_obj")
+                   else ex.to_json_obj(self.bundle, [self.i]))
             with open(path, "w") as fh:
                 json.dump(obj, fh, indent=1)
             self.statusBar().showMessage(f"wrote {path}")
 
     def copy_text(self):
-        QApplication.clipboard().setText(ds.system_text(self.bundle, self.i))
+        text = self.bundle.text() if hasattr(self.bundle, "text") else ds.system_text(self.bundle, self.i)
+        QApplication.clipboard().setText(text)
         self.statusBar().showMessage("summary copied to the clipboard")
 
 

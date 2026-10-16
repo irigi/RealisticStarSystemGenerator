@@ -236,7 +236,7 @@ and returns a `Systems` bundle of the four tables; conditioned systems convert w
   (one row per star, planets left to right, moons below; procedural artwork from
   `starsys.view.art`, deterministic per body, physics-guided palettes), an orbit view at true
   separations (face-on, linear/log, habitable zones, time controls), a body tree and a
-  plain-language information panel (stellar orbits barycentric: the members of each pair
+  plain-language information panel; the Sun opens the real Solar System (`starsys.real.solar`) (stellar orbits barycentric, each in its star's colour: the members of each pair
   opposite about their centre of mass); Previous/Next over a seed sequence or a real star's
   conditioned realisations; opened from the star map, Next jumps to a random system of the
   galaxy (every system equally likely, a fixed sequence per starting star) and Previous walks

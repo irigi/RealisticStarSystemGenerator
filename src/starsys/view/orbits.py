@@ -17,12 +17,20 @@ from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPainterPath, QPen, Q
 from PySide6.QtWidgets import QWidget
 
 from . import model as md
+from .art import star_rgb
 from .sysmap import BG, SELECT, SUBTEXT, TEXT, display_px, pixmap
 
 ORBIT = QColor(80, 105, 150)
 ORBIT_STAR = QColor(200, 170, 90)
 HZ_CONS = QColor(60, 170, 90, 60)
 HZ_OPT = QColor(60, 170, 90, 28)
+
+
+def star_orbit_colour(teff) -> QColor:
+    """Each star's orbit in a muted version of its own colour, so the members of a pair can be
+    told apart."""
+    r, g, b = star_rgb(float(teff or 4000))
+    return QColor(int(90 + 140 * r), int(80 + 130 * g), int(60 + 130 * b))
 
 
 class OrbitView(QWidget):
@@ -156,7 +164,7 @@ class OrbitView(QWidget):
             if b.cat == "moon" and not self.show_moons:
                 continue
             o = b.orbit
-            if o is None:
+            if o is None and b.cat != "star":  # (a primary has a barycentric orbit all the same)
                 continue
             if b.cat == "moon":
                 par = np.array(pos[b.parent])
@@ -164,8 +172,10 @@ class OrbitView(QWidget):
                 if o[0] * self.px_per_au_at(rpar) < 6:
                     continue
             path = md.orbit_path(m, name, pos)
+            if path is None:
+                continue
             pts = self.to_screen(path)
-            col = ORBIT_STAR if b.cat == "star" else ORBIT
+            col = star_orbit_colour(b.d.get("teff")) if b.cat == "star" else ORBIT
             if b.cat == "moon":
                 col = QColor(70, 85, 110)
             pen = QPen(SELECT if name == self.selected else col, 1.6 if name == self.selected else 1.0)

@@ -238,10 +238,11 @@ def _black_hole(px):
     return _rgba(rgb * (0.5 + 0.5 * alpha[..., None]), alpha)
 
 
-def _giant(n, rng, p, t_eq, rot_h, mass):
+def _giant(n, rng, p, t_eq, rot_h, mass, palette=None):
     """Banded giant: palette by Sudarsky class, band count by rotation."""
     if t_eq < 150:      # I: ammonia clouds (Jupiter, Saturn)
         pal = rng.choice(3)
+        pal = pal if palette is None else palette
         stops = [[(0, "#7a4a2a"), (0.35, "#c08a5a"), (0.6, "#e8d2b0"), (1, "#f6eedc")],
                  [(0, "#8a6a3a"), (0.4, "#c8a86a"), (0.7, "#e4d0a0"), (1, "#f2e6c8")],
                  [(0, "#6a3a22"), (0.3, "#b0603a"), (0.65, "#e0b890"), (1, "#f4e4d0")]][pal]
@@ -278,7 +279,7 @@ def _giant(n, rng, p, t_eq, rot_h, mass):
     return rgb
 
 
-def _ice_giant(n, rng, p, t_eq):
+def _ice_giant(n, rng, p, t_eq, base_hex=None):
     """Ice giants and sub-Neptunes: methane-blue when cold (Uranus/Neptune), photochemical
     hazes when warm; faint zonal bands, bright methane-ice cloud streaks, dark spots."""
     if t_eq > 500:  # warm sub-Neptunes: hazy (tholin-like or sulphur hazes)
@@ -288,6 +289,8 @@ def _ice_giant(n, rng, p, t_eq):
     else:
         base = _shift(_hex(rng.choice(["#3a78c8", "#5ab0d0", "#4a90c0", "#6ac0c8", "#2c5aa8", "#7ac8c0"])),
                       rng, 0.04, 0.08)
+        if base_hex:
+            base = _hex(base_hex)
         hi = np.clip(base * 1.25 + 0.1, 0, 1)
         band_amp = 0.2 + 0.35 * rng.random()
     lat = p[1] + 0.05 * n.fbm(tuple(3 * q for q in p), 4) + 0.02 * n.fbm((p[0] * 4, p[1] * 25, p[2] * 4), 3)
@@ -313,7 +316,7 @@ def _ice_giant(n, rng, p, t_eq):
     return rgb
 
 
-def _rocky(n, rng, p, climate, t_surf, t_eq, mass, water_lost):
+def _rocky(n, rng, p, climate, t_surf, t_eq, mass, water_lost, base_hex=None):
     h = n.fbm(tuple(1.6 * q for q in p), 6, gain=0.52)
     detail = n.fbm(tuple(9 * q for q in p), 4)
     lat = np.abs(p[1])
@@ -341,6 +344,7 @@ def _rocky(n, rng, p, climate, t_surf, t_eq, mass, water_lost):
         clouds = 0.35 + 0.25 * rng.random()
     elif climate == "frozen":
         base = _shift(_hex(rng.choice(["#dfe8f0", "#d8dce0", "#e8e0d8", "#c8d8e8"])), rng, 0.03, 0.05)
+        base = _hex(base_hex) if base_hex else base
         cracks = np.clip(1 - n.ridged(tuple(4 * q for q in p), 4) * 1.15, 0, 1) ** 3
         rgb = base * (0.85 + 0.15 * h[..., None]) * (1 - 0.35 * cracks[..., None])
         # darker exposed terrain / tholin-stained plains (Pluto, Triton)
@@ -359,6 +363,7 @@ def _rocky(n, rng, p, climate, t_surf, t_eq, mass, water_lost):
         rgb = crust * (1 - lava[..., None]) + _hex("#ff6a10") * lava[..., None]
     else:  # airless or thin atmosphere: cratered regolith
         base = _shift(_hex(rng.choice(["#8a8580", "#9a8a78", "#7a7470", "#a07858", "#8a7a6a"])), rng, 0.04, 0.1)
+        base = _hex(base_hex) if base_hex else base
         rgb = base * (0.75 + 0.35 * h[..., None] + 0.1 * detail[..., None])
         rgb = _craters(rgb, rng, p, int(20 + 40 * rng.random()))
     return rgb, clouds
@@ -376,7 +381,7 @@ def _craters(rgb, rng, p, k):
     return rgb
 
 
-def _moon(n, rng, p, comp, flux):
+def _moon(n, rng, p, comp, flux, base_hex=None):
     h = n.fbm(tuple(2 * q for q in p), 5)
     if flux is not None and flux > 1.0:  # Io-like (Io ~2 W/m^2)
         base = _shift(_hex("#d8c050"), rng, 0.04, 0.08)
@@ -389,10 +394,12 @@ def _moon(n, rng, p, comp, flux):
         return rgb
     if comp == "ice":
         base = _shift(_hex(rng.choice(["#d8d4cc", "#c8c0b0", "#e0e4e8", "#b8a890"])), rng, 0.04, 0.08)
+        base = _hex(base_hex) if base_hex else base
         lines = np.clip(1 - n.ridged(tuple(3 * q for q in p), 3) * 1.1, 0, 1) ** 4 * rng.random()
         rgb = base * (0.8 + 0.25 * h[..., None]) * (1 - 0.5 * lines[..., None])
         return _craters(rgb, rng, p, int(rng.integers(5, 30)))
     base = _shift(_hex(rng.choice(["#8a8580", "#7a7068", "#9a9088"])), rng, 0.04, 0.1)
+    base = _hex(base_hex) if base_hex else base
     return _craters(base * (0.75 + 0.35 * h[..., None]), rng, p, int(rng.integers(15, 50)))
 
 
@@ -400,7 +407,8 @@ def render(body: dict, px: int, seed: int) -> np.ndarray:
     """RGBA uint8 image (px x px) of a body given as a :mod:`starsys.export` dict.
 
     The body's role is recognised from its keys: stars have ``teff``, planets ``type``, moons
-    ``composition``.
+    ``composition``. An optional ``art`` dict (real bodies) fixes the ``base`` colour (hex) or
+    the giant ``palette``; all else stays procedural.
     """
     px = max(int(px), 4)
     rng = np.random.default_rng(seed)
@@ -411,27 +419,28 @@ def render(body: dict, px: int, seed: int) -> np.ndarray:
     mask, x, y, z, p = _sphere(px, tilt, rng.random() * 6.28)
     lit, lam = _light(x, y, z)
     atm_c, atm_s, clouds, night = None, 0.0, None, None
+    hint = body.get("art") or {}
     if "composition" in body:
-        rgb = _moon(n, rng, p, body.get("composition"), body.get("heat_flux_w_m2"))
+        rgb = _moon(n, rng, p, body.get("composition"), body.get("heat_flux_w_m2"), hint.get("base"))
         flux = body.get("heat_flux_w_m2") or 0
         if flux > 20:
             night = 0.5
     else:
         kind, t_eq = body.get("type"), float(body.get("t_eq_k") or 300)
         if kind == "giant":
-            rgb = _giant(n, rng, p, t_eq, body.get("rotation_h"), body.get("mass"))
+            rgb = _giant(n, rng, p, t_eq, body.get("rotation_h"), body.get("mass"), hint.get("palette"))
             atm_c, atm_s = rgb.mean(axis=(0, 1)) * 0.6 + 0.4, 0.35
             if t_eq > 1400:
                 night = min((t_eq - 1400) / 1500, 0.8)
         elif kind == "envelope":
-            rgb = _ice_giant(n, rng, p, t_eq)
+            rgb = _ice_giant(n, rng, p, t_eq, hint.get("base"))
             atm_c, atm_s = np.clip(rgb.mean(axis=(0, 1)) + 0.25, 0, 1), 0.45
         else:
             climate = str(body.get("climate", "")).split(" (")[0]
             climate = {"thin or no atmosphere": "airless"}.get(climate, climate)
             climate = "hot" if t_eq > 900 and climate in ("airless", "unlit", "") else climate
             rgb, clouds = _rocky(n, rng, p, climate, body.get("t_surface_illustrative_k"), t_eq,
-                                 body.get("mass"), (body.get("t_runaway_myr") or 0) > 100)
+                                 body.get("mass"), (body.get("t_runaway_myr") or 0) > 100, hint.get("base"))
             if climate in ("temperate", "marginal"):
                 atm_c, atm_s = _hex("#8ab8ff"), 0.6
             elif climate == "runaway greenhouse":

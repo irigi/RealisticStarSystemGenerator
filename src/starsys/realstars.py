@@ -298,10 +298,14 @@ def real_seed(lookup: str) -> int:
 def real_system(lookup: str, name: str | None = None):
     """The one planetary system of a real star: a single realisation conditioned on the star
     (:func:`starsys.real.condition.condition`) with a seed fixed by its catalogue identifier,
-    so it is the same every time (and in every session). ID ``R:<name>``."""
+    so it is the same every time (and in every session). ID ``R:<name>``. The Sun gives the
+    real Solar System (:class:`starsys.real.solar.SolarSystem`)."""
     from .generate import Systems
     from .real import condition as cd
+    from .real import solar
     from .real.catalog import find
+    if solar.is_sun(lookup):  # the real Solar System (starsys.real.solar), not a realisation
+        return solar.SolarSystem()
     rec = find(lookup)
     b = Systems.from_conditioned(cd.condition(rec, n=1, seed=real_seed(lookup)))
     b.meta["ids"] = [f"R:{name or rec.name}"]

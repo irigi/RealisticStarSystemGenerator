@@ -230,3 +230,21 @@ def test_stellar_orbits_are_drawn_barycentric():
         assert np.allclose(ab, com)
         assert np.dot(np.array(pos["A"]) - ab, np.array(pos["B"]) - ab) < 0
         assert np.dot(ab, np.array(pos["C"])) < 0
+
+
+def test_solar_system_is_real():
+    from starsys import realstars as rs
+    from starsys.view.app import passes
+    b = rs.real_system("Sun")
+    d = b.system_dict(0)
+    m = md.build(d)
+    planets = [n for n in m.order if m.bodies[n].cat == "planet"]
+    assert planets == ["Mercury", "Venus", "Earth", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune", "Pluto"]
+    assert abs(m.bodies["Earth"].orbit[3] - 365.256) < 0.01
+    assert m.bodies["Earth"].d["habitable_zone"] == "conservative HZ"
+    assert [c for c in m.bodies["Jupiter"].children] == ["Io", "Europa", "Ganymede", "Callisto"]
+    assert m.bodies["Io"].d["heat_flux_w_m2"] > 1  # drawn as volcanic
+    # J2000: the Sun's geocentric longitude is 280.46 deg, so Earth is at ~100.5 deg heliocentric
+    x, y = md.positions(m, 0.0)["Earth"]
+    assert abs(np.degrees(np.arctan2(y, x)) % 360 - 100.5) < 2.5
+    assert passes(b, 0, {"multiple": True}) and b.json_obj()["systems"][0]["system_id"] == "R:Sun"

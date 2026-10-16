@@ -283,6 +283,27 @@ Drawing (a display choice, not physics):
 - Below ~40 pc camera distance the limit opens up to every star (brown dwarfs included), so
   the solar neighbourhood is shown completely.
 
+## The Solar System (starsys.real.solar)
+
+Opening the Sun shows the real Solar System instead of a conditioned realisation: the eight
+planets and Pluto with 23 major moons. Sources:
+- **Orbits:** J2000 mean elements from Standish (JPL SSD, "Keplerian elements for approximate
+  positions of the major planets", Table 1). They are referred to the ecliptic, not the
+  invariable plane.
+- **Physical data:** NASA Planetary Fact Sheet.
+- **Moons:** JPL SSD satellite mean elements and physical parameters.
+- **Tidal heat:** Io (Lainey et al. 2009), Enceladus (Howett et al. 2011), Europa (order of
+  magnitude).
+
+Equilibrium temperatures, insolation and habitable-zone labels follow the generator's
+conventions (Bond albedo 0.3, Kopparapu et al. 2014), so they compare with generated planets.
+Artwork stays procedural, with a colour hint per body; there are no real surface maps and no
+rings. Dwarf planets other than Pluto are left out, since their J2000 mean anomalies are not in
+the Standish table.
+
+Not yet used: the measured orbits of real binaries (Sirius A-B: a = 7.50", e = 0.59,
+P = 50.1 yr). Conditioning draws a companion orbit from the projected separation alone.
+
 ## Moon tidal heating cap (phase 7)
 
 Forced eccentricities of resonant moons are drawn (0.001-0.01), and the Io-calibrated heating

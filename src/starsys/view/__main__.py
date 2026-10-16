@@ -5,6 +5,7 @@ Examples::
     python -m starsys.view                    # systems S1-0, S1-1, ... (Next / Previous)
     python -m starsys.view --id S7-1234       # start at a given system
     python -m starsys.view --real "tau Ceti" -n 20   # realisations conditioned on a real star
+    python -m starsys.view --real Sun         # the real Solar System
     python -m starsys.view --galaxy           # 3D map of the Milky Way with real and procedural stars
     python -m starsys.view --galaxy --find Vega
 
@@ -76,10 +77,14 @@ def main(argv=None):
     if args.real:
         from ..generate import Systems
         from ..real import condition as cd
+        from ..real import solar
         from ..real.catalog import find
-        rec = find(args.real)
-        c = cd.condition(rec, n=args.n, seed=args.seed)
-        source = BundleSource(Systems.from_conditioned(c), rec.name)
+        if solar.is_sun(args.real):
+            source = BundleSource(solar.SolarSystem(), "Solar System")
+        else:
+            rec = find(args.real)
+            c = cd.condition(rec, n=args.n, seed=args.seed)
+            source = BundleSource(Systems.from_conditioned(c), rec.name)
     else:
         source = SequenceSource(args.seed)
         if args.id:
