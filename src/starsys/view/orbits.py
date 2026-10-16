@@ -122,6 +122,32 @@ class OrbitView(QWidget):
             d = d * self.scale
         return np.stack([c[0] + d[:, 0], c[1] - d[:, 1]], axis=1)
 
+    def refined(self, path_of, n0: int = 240, max_px: float = 2.0, max_points: int = 20000):
+        """A path sampled evenly in eccentric anomaly, then subdivided where it is on screen
+        until its segments are at most ``max_px`` long. A straight chord between two samples
+        falls inside the curve (by ~1e-4 of the orbit with 240 points, many pixels when zoomed
+        in), which would leave a body visibly off its drawn orbit."""
+        E = np.linspace(0, 2 * np.pi, n0)
+        pts = path_of(E)
+        if pts is None:
+            return None
+        w, h = self.width(), self.height()
+        for _ in range(30):
+            sc = self.to_screen(pts)
+            seg = np.hypot(*np.diff(sc, axis=0).T)
+            lo, hi = np.minimum(sc[:-1], sc[1:]), np.maximum(sc[:-1], sc[1:])
+            # a segment's box near the viewport (a long chord can cross it with both ends outside)
+            # (plus the arc's bulge beyond its chord, < 1/30 of the chord at the initial spacing)
+            pad = 50 + 0.05 * seg
+            near = (hi[:, 0] > -pad) & (lo[:, 0] < w + pad) & (hi[:, 1] > -pad) & (lo[:, 1] < h + pad)
+            split = np.flatnonzero(near & (seg > max_px))
+            if not len(split) or len(E) + len(split) > max_points:
+                break
+            mid = 0.5 * (E[split] + E[split + 1])
+            E = np.insert(E, split + 1, mid)
+            pts = path_of(E)
+        return self.to_screen(pts)
+
     def px_per_au_at(self, r: float) -> float:
         if not self.log:
             return self.scale
@@ -171,10 +197,9 @@ class OrbitView(QWidget):
                 rpar = float(np.hypot(*(par - self.centre)))
                 if o[0] * self.px_per_au_at(rpar) < 6:
                     continue
-            path = md.orbit_path(m, name, pos)
-            if path is None:
+            pts = self.refined(lambda E: md.orbit_path(m, name, pos, E))
+            if pts is None:
                 continue
-            pts = self.to_screen(path)
             col = star_orbit_colour(b.d.get("teff")) if b.cat == "star" else ORBIT
             if b.cat == "moon":
                 col = QColor(70, 85, 110)
@@ -183,9 +208,10 @@ class OrbitView(QWidget):
             p.drawPolyline(QPolygonF([QPointF(*q) for q in pts]))
         # centres of mass of inner stellar pairs (hierarchical triples, quadruples)
         pen = QPen(ORBIT_STAR, 1.0, Qt.PenStyle.DashLine)
-        for com, path in md.barycentre_paths(m, pos):
+        for k, (com, _) in enumerate(md.barycentre_paths(m, pos, 2)):
+            path = self.refined(lambda E: md.barycentre_paths(m, pos, E)[k][1])
             p.setPen(pen)
-            p.drawPolyline(QPolygonF([QPointF(*q) for q in self.to_screen(path)]))
+            p.drawPolyline(QPolygonF([QPointF(*q) for q in path]))
             q = self.to_screen(com)[0]
             p.setPen(QPen(ORBIT_STAR, 1))
             p.drawLine(QPointF(q[0] - 3, q[1] - 3), QPointF(q[0] + 3, q[1] + 3))

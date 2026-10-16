@@ -248,3 +248,33 @@ def test_solar_system_is_real():
     x, y = md.positions(m, 0.0)["Earth"]
     assert abs(np.degrees(np.arctan2(y, x)) % 360 - 100.5) < 2.5
     assert passes(b, 0, {"multiple": True}) and b.json_obj()["systems"][0]["system_id"] == "R:Sun"
+
+
+def test_orbit_view_keeps_bodies_on_their_drawn_orbits_at_any_zoom():
+    from PySide6.QtWidgets import QApplication
+
+    from starsys.view.orbits import OrbitView
+    app = QApplication.instance() or QApplication([])  # noqa: F841
+    m = md.build(ex.system_dict(ids.system("S1-1"), 0))
+    v = OrbitView()
+    v.resize(800, 600)
+    v.set_system(m)
+    v.t = 777.0
+    pos = md.positions(m, v.t)
+    for log in (False, True):
+        v.log = log
+        for zoom in (1.0, 1e3, 1e6):
+            v.fit()
+            v.scale *= zoom if not log else 1.0
+            if log:
+                v.r0 /= zoom
+            for s in m.stars:
+                v.centre = np.array(pos[s.name])
+                pts = v.refined(lambda E: md.orbit_path(m, s.name, pos, E))
+                q = v.to_screen(np.array(pos[s.name]))[0]
+                # distance from the body to the polyline (segments)
+                a, b = pts[:-1], pts[1:]
+                ab = b - a
+                t = np.clip(((q - a) * ab).sum(1) / np.maximum((ab * ab).sum(1), 1e-12), 0, 1)
+                d = np.hypot(*(a + t[:, None] * ab - q).T).min()
+                assert d < 0.5, (s.name, log, zoom, d)
