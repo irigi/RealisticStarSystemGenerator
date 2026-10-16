@@ -100,3 +100,29 @@ def test_galaxy_walk_and_star_appearance():
     xyz = np.array([[0.0, 0, 0], [5, 0, 0], [500, 0, 0]])
     size, c = appearance(np.array([5.0, 15.0, 5.0]), xyz, np.array([0.0, 0, 50]), 50.0, col)
     assert size[0] > size[1] and size[2] == 0  # bright near star big, far star outside the window hidden
+
+
+def test_star_map_mouse_centre():
+    from PySide6.QtWidgets import QApplication
+
+    from starsys.view.starmap import StarMapWindow
+    app = QApplication.instance() or QApplication([])
+    w = StarMapWindow(cloud_n=2000)
+    v = w.view
+    v.resize(1000, 800)  # not shown: the offscreen platform has no OpenGL; the projection is pure maths
+    w.fly((10, 20, 0), 100, elevation=30)
+    cx, cy = v.width() / 2, v.height() / 2
+    assert np.allclose(v.plane_point(cx, cy, 0.0), [10, 20, 0], atol=0.5)
+    p = v.plane_point(cx + 150, cy - 80, 0.0)
+    assert abs(p[2]) < 1e-6
+    sc, ok = v.project(p[None, :])
+    assert ok[0] and np.allclose(sc[0], [cx + 150, cy - 80], atol=1.0)
+    w.double_click(cx + 150, cy - 80)  # empty place (or a star near it): the centre moves there
+    for _ in range(40):
+        app.processEvents()
+        if w._flight is None:
+            break
+        import time
+        time.sleep(0.03)
+    assert np.linalg.norm(w._centre() - (10, 20, 0)) > 5
+    w.close()

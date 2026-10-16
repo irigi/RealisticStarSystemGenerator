@@ -105,12 +105,45 @@ class MapView(gl.GLViewWidget):
     def mouseDoubleClickEvent(self, ev):
         self.doublePicked.emit(ev.position().x(), ev.position().y())
 
-    def project(self, xyz: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        """Screen coordinates (px) of points and a mask of those in front of the camera."""
+    def mouseMoveEvent(self, ev):
+        if ev.buttons() == Qt.MouseButton.RightButton:
+            # right-drag: move the map in the galactic plane (as middle-drag)
+            lpos = ev.position()
+            diff = lpos - getattr(self, "mousePos", lpos)
+            self.mousePos = lpos
+            self.pan(diff.x(), diff.y(), 0, relative="view-upright")
+            return
+        super().mouseMoveEvent(ev)
+
+    def _matrix(self) -> np.ndarray:
         vp = self.getViewport()
         m = self.projectionMatrix(vp, vp) * self.viewMatrix()
-        a = np.array(m.data(), dtype=np.float64).reshape(4, 4).T  # column-major
-        h = np.c_[xyz, np.ones(len(xyz))] @ a.T
+        return np.array(m.data(), dtype=np.float64).reshape(4, 4).T  # column-major
+
+    def ray(self, x: float, y: float) -> tuple[np.ndarray, np.ndarray]:
+        """Origin and unit direction of the line of sight through the screen point (px)."""
+        inv = np.linalg.inv(self._matrix())
+        ndc = np.array([2 * x / self.width() - 1, 1 - 2 * y / self.height()])
+        a, b = (inv @ np.r_[ndc, z, 1.0] for z in (-1.0, 1.0))
+        a, b = a[:3] / a[3], b[:3] / b[3]
+        return a, (b - a) / np.linalg.norm(b - a)
+
+    def plane_point(self, x: float, y: float, z0: float) -> np.ndarray:
+        """Where the line of sight through (x, y) meets the horizontal plane z = z0 (or, when
+        looking along the plane, the point at the current centre's distance)."""
+        o, d = self.ray(x, y)
+        c = self.opts["center"]
+        dist = float((self.cameraPosition() - c).length())
+        if abs(d[2]) > 1e-3:
+            t = (z0 - o[2]) / d[2]
+            if 0 < t < 50 * dist:
+                return o + t * d
+        e = self.cameraPosition()
+        return np.array([e.x(), e.y(), e.z()]) + dist * d
+
+    def project(self, xyz: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """Screen coordinates (px) of points and a mask of those in front of the camera."""
+        h = np.c_[xyz, np.ones(len(xyz))] @ self._matrix().T
         w = h[:, 3]
         ok = w > 1e-9
         ndc = h[:, :2] / np.where(ok, w, 1.0)[:, None]
@@ -191,7 +224,7 @@ class StarMapWindow(QMainWindow):
         self.view.setBackgroundColor(QColor(BG))
         self.view.opts["fov"] = 50
         self.view.picked.connect(self.pick)
-        self.view.doublePicked.connect(lambda x, y: (self.pick(x, y), self.centre_on_selection()))
+        self.view.doublePicked.connect(self.double_click)
 
         # galaxy cloud
         pts, comp, arm = gx.sample_cloud(cloud_n)
@@ -258,11 +291,11 @@ class StarMapWindow(QMainWindow):
         self.results = QListWidget()
         self.results.itemClicked.connect(lambda it: self.select_real(it.data(Qt.ItemDataRole.UserRole), True))
         b_sun = QPushButton("Sun")
-        b_sun.clicked.connect(lambda: self.fly((0, 0, 0), 60))
+        b_sun.clicked.connect(lambda: self.fly((0, 0, 0), 60, animate=True))
         b_gal = QPushButton("Whole galaxy")
-        b_gal.clicked.connect(lambda: self.fly((gx.R0_PC, 0, 0), 45000, elevation=55))
+        b_gal.clicked.connect(lambda: self.fly((gx.R0_PC, 0, 0), 45000, elevation=55, animate=True))
         b_hood = QPushButton("1 kpc")
-        b_hood.clicked.connect(lambda: self.fly(self._centre(), 2500))
+        b_hood.clicked.connect(lambda: self.fly(self._centre(), 2500, animate=True))
         left = QWidget()
         ll = QVBoxLayout(left)
         ll.addWidget(QLabel("Find a star"))
@@ -274,7 +307,8 @@ class StarMapWindow(QMainWindow):
         ll.addLayout(row)
         legend = QLabel("<small>Bright points: real stars (census, Hipparcos).<br>Fainter points near the "
                         "view centre: procedural systems filling what the catalogues miss.<br>"
-                        "Left-drag rotate · Ctrl/middle-drag pan · wheel zoom · double-click centre</small>")
+                        "Left-drag rotate · right- or middle-drag move · wheel zoom · double-click a star or any "
+                        "place to centre there</small>")
         legend.setWordWrap(True)
         ll.addWidget(legend)
 
@@ -306,6 +340,7 @@ class StarMapWindow(QMainWindow):
         self.windows = []
         self._thread = None
         self._last_cam = None
+        self._flight = None
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._tick)
         self.timer.start(60)
@@ -316,10 +351,43 @@ class StarMapWindow(QMainWindow):
         c = self.view.opts["center"]
         return np.array([c.x(), c.y(), c.z()])
 
-    def fly(self, centre, distance, elevation=None):
-        self.view.setCameraPosition(pos=QVector3D(*map(float, centre)), distance=float(distance),
-                                    elevation=elevation)
+    def fly(self, centre, distance, elevation=None, animate=False, ms=350):
+        """Move the view centre and camera distance (smoothly with ``animate``: the centre
+        linearly, the distance logarithmically)."""
+        self._flight = None
+        if not animate:
+            self.view.setCameraPosition(pos=QVector3D(*map(float, centre)), distance=float(distance),
+                                        elevation=elevation)
+            self._last_cam = None
+            return
+        e0 = self.view.opts["elevation"]
+        self._flight = (self._centre(), np.asarray(centre, float), math.log(self.view.opts["distance"]),
+                        math.log(float(distance)), e0, e0 if elevation is None else elevation, 0, max(ms // 20, 1))
+        QTimer.singleShot(0, self._fly_step)
+
+    def _fly_step(self):
+        if self._flight is None:
+            return
+        c0, c1, l0, l1, e0, e1, k, n = self._flight
+        k += 1
+        u = k / n
+        u = u * u * (3 - 2 * u)  # ease in and out
+        self.view.setCameraPosition(pos=QVector3D(*map(float, c0 + (c1 - c0) * u)),
+                                    distance=math.exp(l0 + (l1 - l0) * u), elevation=e0 + (e1 - e0) * u)
         self._last_cam = None
+        if k < n:
+            self._flight = (c0, c1, l0, l1, e0, e1, k, n)
+            QTimer.singleShot(20, self._fly_step)
+        else:
+            self._flight = None
+
+    def double_click(self, x, y):
+        """Centre on the star under the cursor, or on the point of the plane through the
+        current centre under the cursor."""
+        if self.pick(x, y):
+            self.centre_on_selection()
+        else:
+            self.fly(self.view.plane_point(x, y, self._centre()[2]), self.view.opts["distance"], animate=True)
 
     def load_radius(self) -> float:
         d = self.view.opts["distance"]
@@ -475,11 +543,12 @@ class StarMapWindow(QMainWindow):
             if dist[i] < 9 and (best is None or dist[i] < best[0] - (2 if kind == "real" else 0)):
                 best = (dist[i], kind, i)
         if best is None:
-            return
+            return False
         if best[1] == "real":
             self.select_real(best[2])
         else:
             self.select_proc(best[2])
+        return True
 
     def _mark(self, xyz):
         self.sel_item.setData(pos=np.array([xyz], np.float32), size=18.0, color=(0.4, 1, 0.6, 0.6))
@@ -524,7 +593,7 @@ class StarMapWindow(QMainWindow):
 
     def centre_on_selection(self):
         if self.selection is not None:
-            self.fly(self.selection[2], min(self.view.opts["distance"], 40.0))
+            self.fly(self.selection[2], min(self.view.opts["distance"], 40.0), animate=True)
 
     def do_search(self):
         t = self.search.text().strip()
@@ -597,7 +666,7 @@ class StarMapWindow(QMainWindow):
             return
         self.selection = ("id", sid, xyz)
         self._mark(xyz)
-        self.fly(xyz, min(self.view.opts["distance"], 40.0))
+        self.fly(xyz, min(self.view.opts["distance"], 40.0), animate=True)
         self.info.setHtml(f"<h2>{sid}</h2><p class='desc'>Procedural system ({bundle.meta.get('population', '')} "
                           f"population), shown in the system viewer.</p>")
         self.open_b.setEnabled(True)
