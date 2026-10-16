@@ -76,7 +76,7 @@ def test_galaxy_walk_and_star_appearance():
     from starsys import galaxy as gx
     from starsys import realstars as rs
     from starsys.view.app import SystemWindow
-    from starsys.view.starmap import GalaxyWalkSource, appearance, teff_colour
+    from starsys.view.starmap import GalaxyWalkSource, appearance, effective_mag, magnitude_limit, teff_colour
     app = QApplication.instance() or QApplication([])
     sec = gx.sector(20, 5, 0)
     src = GalaxyWalkSource(sec.sid(0))
@@ -98,7 +98,8 @@ def test_galaxy_walk_and_star_appearance():
     col = teff_colour(np.array([3000.0, 6000.0, 20000.0]))
     assert col[0, 0] > col[0, 2] and col[2, 2] > col[2, 0]
     xyz = np.array([[0.0, 0, 0], [5, 0, 0], [500, 0, 0]])
-    size, c = appearance(np.array([5.0, 15.0, 5.0]), xyz, np.array([0.0, 0, 50]), 50.0, col)
+    m = effective_mag(np.array([5.0, 15.0, 5.0]), xyz, np.array([0.0, 0, 50]), 50.0, np.zeros(3))
+    size, c = appearance(m, magnitude_limit(m, 50.0), col)
     assert size[0] > size[1] and size[2] == 0  # bright near star big, far star outside the window hidden
 
 
@@ -160,3 +161,31 @@ def test_artwork_is_rendered_at_the_zoom():
     assert need > 1.5 * n0 and it.pixmap().width() == need
     assert abs(it.pixmap().width() / it.pixmap().devicePixelRatio() - lpx) < 1  # same size on the map
     w.close()
+
+
+def test_star_map_shows_a_budget_of_stars_at_every_zoom():
+    from PySide6.QtWidgets import QApplication
+
+    from starsys.view.starmap import StarMapWindow, star_budget, tier_weight
+    app = QApplication.instance() or QApplication([])
+    w = StarMapWindow(cloud_n=2000)
+    w.view.resize(1000, 800)  # not shown (no OpenGL offscreen)
+    assert tier_weight(0, 40.0) == 1 and tier_weight(0, 2000.0) == 0 and tier_weight(3, 1e5) == 1
+    for d in (50.0, 2000.0, 40000.0):
+        w.fly((gx_r0() if d > 10000 else 0.0, 0, 0), d, 40)
+        w._last_cam = None
+        for _ in range(3000):
+            w._tick()
+            if not w.queue:
+                break
+        w._tick()
+        shown = int(w.real_vis.sum() + w.proc_vis.sum())
+        assert 0.7 * star_budget(d) <= shown <= star_budget(d) + 1, (d, shown)
+        if d > 1000:  # no faint tier is shown once the view has outgrown it
+            assert not (w.proc_vis & (w.proc["tier"] == 0)).any()
+    w.close()
+
+
+def gx_r0():
+    from starsys import galaxy as gx
+    return gx.R0_PC

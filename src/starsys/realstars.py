@@ -209,7 +209,18 @@ def _hipparcos(census_hip: set) -> pd.DataFrame:
 
 @lru_cache(maxsize=1)
 def stars() -> pd.DataFrame:
-    """All real systems of the map (cached in data/real/starmap.parquet)."""
+    """All real systems of the map (cached in data/real/starmap.parquet); a missing Teff
+    (most census entries) is taken from the spectral type."""
+    df = _stars()
+    miss = ~np.isfinite(df["teff"].to_numpy(float))
+    if miss.any():
+        from .real.catalog import teff_from_spectral_type
+        df.loc[miss, "teff"] = [(m.value if (m := teff_from_spectral_type(str(sp))) else np.nan)
+                                for sp in df.loc[miss, "sptype"].fillna("")]
+    return df
+
+
+def _stars() -> pd.DataFrame:
     if CACHE.exists():
         return pd.read_parquet(CACHE)
     cen = _census_systems()

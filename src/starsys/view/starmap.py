@@ -2,20 +2,29 @@
 
 Layers (heliocentric Galactic coordinates in parsecs, see :mod:`starsys.galaxy`):
 
-* the galaxy as a point cloud sampled from the density model (far view; fades out near stars);
 * the real stars (:mod:`starsys.realstars`: 20-pc census + Hipparcos Survey);
-* the procedural systems of the sectors around the view centre (level of detail: loaded a
-  few sectors per timer tick, only within a radius that shrinks as the camera closes in),
-  minus those the catalogues already hold.
+* the procedural systems, minus those the catalogues already hold, from the galaxy's
+  brightness tiers: the 10-pc sectors (all faint stars) near the view centre, the A/F-star
+  and B-star cells out to a few hundred pc, and the O/B stars (>= 8 Msun) of the whole galaxy;
+* the unresolved light of the rest (old disc, bulge, halo) as a faint point cloud sampled
+  from the density model, which brightens smoothly as the camera moves out.
 
-Mouse: left-drag rotates, middle-drag (or Ctrl+left) pans, wheel zooms, click selects,
-double-click centres on a star. Stars are coloured by temperature and sized by absolute
-magnitude (brighter = bigger).
+What is drawn: every star gets an apparent magnitude from the camera plus a penalty outside
+the region being looked at (a map, not a sky); the :data:`STAR_BUDGET` brightest are shown,
+graded in size and brightness relative to the faintest shown, so the field stays equally
+full at every zoom. A tier is shown only while its cells cover the view (it fades out as a
+whole when the view grows past them, never at a radius); real stars follow the tier of their
+absolute magnitude. Zooming out, the faint stars give way to ever brighter ones until only
+the O and B stars of the spiral arms are left, against the glow of the old stars.
+
+Mouse: left-drag rotates, right- or middle-drag moves the map, wheel zooms, click selects,
+double-click centres on a star or on the place under the cursor.
 """
 
 from __future__ import annotations
 
 import math
+import time
 
 import numpy as np
 import pyqtgraph.opengl as gl
@@ -34,6 +43,15 @@ from .sysmap import BG
 _T = np.geomspace(1500, 40000, 200)
 _RGB = np.array([star_rgb(t) for t in _T])
 
+STAR_BUDGET = 6000      # stars shown in a local view; up to 5x more for the whole galaxy
+# largest radius (pc) to which each tier's cells are loaded around the view centre (tier 3:
+# the whole galaxy)
+TIER_RADIUS = {0: 45.0, 1: 250.0, 2: 700.0, 3: math.inf}
+# a real star's tier (as the procedural ones: living primaries of 1.5-3, 3-8, >= 8 Msun):
+# main-sequence-like stars by Teff (F0 ~ 1.5, B9 ~ 3, B2 ~ 8 Msun; Pecaut & Mamajek 2013),
+# supergiants (class I) by absolute V, cool giants as tier 1 (mostly 1-3 Msun)
+REAL_TIER_TEFF = (7200.0, 10500.0, 20000.0)
+
 
 def teff_colour(teff: np.ndarray, alpha=1.0) -> np.ndarray:
     t = np.clip(np.nan_to_num(np.asarray(teff, float), nan=5000.0), _T[0], _T[-1])
@@ -48,21 +66,63 @@ def mag_size(abs_v: np.ndarray) -> np.ndarray:
     return np.clip(7.5 - 0.42 * np.nan_to_num(abs_v, nan=10.0), 1.5, 14.0).astype(np.float32)
 
 
-def appearance(abs_v, xyz, eye, view_dist, base_col, centre=None):
-    """Sizes and colours of stars as seen from the camera: apparent magnitude from the eye
-    position against a limit that follows the zoom, and a spatial window around the view
-    centre (a map, not a sky: only the region being looked at is shown in full)."""
+def tier_weight(tier, view_dist: float) -> np.ndarray:
+    """1 while a tier's cells cover the view, fading to 0 as the view outgrows them."""
+    r = np.array([TIER_RADIUS[t] for t in range(4)])[np.asarray(tier, int)]
+    with np.errstate(invalid="ignore"):
+        return np.where(np.isinf(r), 1.0, np.clip((r - 0.6 * view_dist) / (0.3 * view_dist), 0.0, 1.0))
+
+
+def real_tier(abs_v: np.ndarray, teff: np.ndarray, sptype) -> np.ndarray:
+    """Brightness tier of real stars, comparable to the procedural tiers (which go by mass)."""
+    import re
+    t = np.nan_to_num(np.asarray(teff, float), nan=5000.0)
+    a = np.nan_to_num(np.asarray(abs_v, float), nan=99.0)
+    tier = sum((t >= x).astype(int) for x in REAL_TIER_TEFF)
+    cls = [re.search(r"(I{1,3}|IV|V)(?:a|b|ab)?\b", str(x) or "") for x in sptype]
+    lum = np.array([m.group(1) if m else "" for m in cls], object)
+    giant = (lum == "II") | (lum == "III")
+    tier = np.where(giant & (t < REAL_TIER_TEFF[0]), 1, tier)
+    tier = np.where(lum == "I", np.where(a < -4.0, 3, 2), tier)
+    return tier.astype(int)
+
+
+def star_budget(view_dist: float) -> int:
+    """More stars for wider views: the whole galaxy needs its O/B stars to show the arms."""
+    return int(STAR_BUDGET * np.clip((view_dist / 3000.0) ** 0.7, 1.0, 5.0))
+
+
+def effective_mag(abs_v, xyz, eye, view_dist, centre, tier=None):
+    """Apparent V from the camera plus the penalties (mag) for lying outside the region looked
+    at and for belonging to a tier that is fading out (inf: not shown)."""
     d = np.maximum(np.linalg.norm(xyz - eye, axis=1), 0.05)
     m = np.nan_to_num(abs_v, nan=12.0) + 5 * np.log10(d / 10.0)
-    m_lim = 8.5 + 5 * math.log10(max(view_dist, 1.0) / 10.0)
-    x = m_lim - m
-    if centre is not None:
-        rc = np.linalg.norm(xyz - centre, axis=1)
-        x = x - np.clip((rc / view_dist - 0.5) * 6.0, 0.0, None) ** 1.5
+    rc = np.linalg.norm(xyz - centre, axis=1)
+    m = m + np.clip((rc / view_dist - 0.5) * 6.0, 0.0, None) ** 1.5
+    if tier is not None:
+        w = tier_weight(tier, view_dist)
+        m = np.where(w > 0, m + 3.0 * (1 - w), np.inf)
+    return m
+
+
+def magnitude_limit(m_eff: np.ndarray, view_dist: float, budget: int | None = None) -> float:
+    """Faintest effective magnitude shown: the ``budget``-th brightest (default
+    :func:`star_budget`), and no fainter than a limit that follows the zoom (so a sparse region
+    is not filled with the faintest dwarfs)."""
+    budget = star_budget(view_dist) if budget is None else budget
+    cap = 12.5 + 5 * math.log10(max(view_dist, 1.0) / 10.0)
+    if len(m_eff) > budget:
+        return float(min(np.partition(m_eff, budget)[budget], cap))
+    return cap
+
+
+def appearance(m_eff, m_lim, base_col):
+    """Sizes and colours from effective magnitudes against the limit."""
+    x = m_lim - np.asarray(m_eff, float)
     size = np.clip(1.0 + 0.5 * x, 0.0, 11.0).astype(np.float32)
     col = base_col.copy()
-    col[:, 3] = np.clip(x / 3.0, 0.0, 1.0) * base_col[:, 3]
-    size[x <= 0] = 0.0
+    col[:, 3] = np.clip(x / 1.5, 0.0, 1.0) * base_col[:, 3]
+    size[~(x > 0)] = 0.0
     return size, col
 
 
@@ -87,9 +147,12 @@ class MapView(gl.GLViewWidget):
         font.setPointSizeF(8.5)
         p.setFont(font)
         p.setPen(QColor(175, 190, 215))
-        for (x, y), good, t in zip(sc, ok, self.label_text):
-            if good:
+        drawn: list[tuple[float, float]] = []
+        # the selection's label (last) first, then the others where they do not overlap
+        for (x, y), good, t in reversed(list(zip(sc, ok, self.label_text))):
+            if good and all(abs(x - u) > 70 or abs(y - v) > 13 for u, v in drawn):
                 p.drawText(int(x) + 6, int(y) - 4, t)
+                drawn.append((x, y))
         p.end()
 
     def mousePressEvent(self, ev):
@@ -213,6 +276,12 @@ class GalaxyWalkSource:
         return 0
 
 
+def _empty_proc() -> dict:
+    return {"xyz": np.zeros((0, 3), np.float32), "sid": np.zeros(0, object), "absv": np.zeros(0),
+            "teff": np.zeros(0), "spt": np.zeros(0, object), "n": np.zeros(0, int), "pop": np.zeros(0, object),
+            "tier": np.zeros(0, np.int8)}
+
+
 class StarMapWindow(QMainWindow):
     def __init__(self, cloud_n: int = 150000):
         super().__init__()
@@ -226,27 +295,26 @@ class StarMapWindow(QMainWindow):
         self.view.picked.connect(self.pick)
         self.view.doublePicked.connect(self.double_click)
 
-        # galaxy cloud
+        # unresolved light of the old stars (the young ones are resolved: brightness tier 3)
         pts, comp, arm = gx.sample_cloud(cloud_n)
         self.cloud_xyz = pts.astype(np.float32)
         col = np.empty((len(pts), 4), np.float32)
-        warm = np.array([1.0, 0.82, 0.55], np.float32)
-        white = np.array([0.95, 0.92, 0.85], np.float32)
-        blue = np.array([0.55, 0.7, 1.0], np.float32)
+        warm = np.array([1.0, 0.8, 0.55], np.float32)
+        white = np.array([0.92, 0.88, 0.8], np.float32)
         col[:, :3] = np.where((comp == 0)[:, None], white, warm)
-        young = (comp == 0) & (arm > 0.55)
-        col[young, :3] = blue
-        col[:, 3] = np.where(comp == 2, 0.12, np.where(comp == 0, 0.4, 0.25))
+        col[:, 3] = np.where(comp == 2, 0.045, np.where(comp == 0, 0.11, 0.07))
         self.cloud_col = col
         self.cloud = gl.GLScatterPlotItem(pos=self.cloud_xyz, color=col, size=2.0, pxMode=True)
         self.cloud.setGLOptions("additive")
         self.view.addItem(self.cloud)
-        # arm centre lines (faint)
+        # arm centre lines (faint, galaxy scale only)
+        self.arm_items = []
         for name, xy in gx.arm_lines():
             line = np.c_[xy, np.full(len(xy), -gx.Z_SUN_PC)].astype(np.float32)
-            it = gl.GLLinePlotItem(pos=line[::10], color=(0.3, 0.45, 0.8, 0.25), width=1, antialias=True)
+            it = gl.GLLinePlotItem(pos=line[::10], color=(0.3, 0.45, 0.8, 0.0), width=1, antialias=True)
             it.setGLOptions("additive")
             self.view.addItem(it)
+            self.arm_items.append(it)
 
         # real stars
         s = rs.stars()
@@ -256,21 +324,26 @@ class StarMapWindow(QMainWindow):
         absv = s["vmag"].to_numpy(float) - 5 * np.log10(d / 10) - rs.extinction(self.real_xyz.astype(float))
         absv[0] = 4.83  # the Sun
         self.real_absv = absv
+        self.real_tier = real_tier(absv, s["teff"].to_numpy(float), s["sptype"].fillna("").to_numpy())
         self.real_col = teff_colour(s["teff"].to_numpy(float))
-        self.real_size = mag_size(absv)
-        self.real_item = gl.GLScatterPlotItem(pos=self.real_xyz, color=self.real_col, size=self.real_size, pxMode=True)
-        self.real_item.setGLOptions("additive")
+        self.real_vis = np.zeros(len(absv), bool)
+        self.real_item = gl.GLScatterPlotItem(pos=self.real_xyz, color=self.real_col, size=mag_size(absv), pxMode=True)
         self.real_item.setGLOptions("additive")
         self.view.addItem(self.real_item)
 
-        # procedural neighbourhood
-        self.loaded: dict[tuple, tuple] = {}
+        # procedural systems: cells of the brightness tiers, loaded around the view centre
+        # (tier 3, the O/B stars, for the whole galaxy)
+        self.loaded: dict[tuple, dict | None] = {}
         self.queue: list[tuple] = []
+        self.tier3 = [(3, k) for k in gx.cells_within(3, (gx.R0_PC, 0, 0), 16000) if abs(k[2]) <= 2]
         self.proc_item = gl.GLScatterPlotItem(pos=np.zeros((1, 3), np.float32), size=0.0, pxMode=True)
         self.proc_item.setGLOptions("additive")
         self.view.addItem(self.proc_item)
-        self.proc = {"xyz": np.zeros((0, 3), np.float32), "sid": [], "absv": np.zeros(0), "teff": np.zeros(0),
-                     "spt": [], "n": np.zeros(0, int), "pop": []}
+        self.proc = _empty_proc()
+        self.proc_col = teff_colour(np.zeros(0))
+        self.proc_vis = np.zeros(0, bool)
+        self._dirty = False
+        self._last_rebuild = 0.0
 
         self.sel_item = gl.GLScatterPlotItem(pos=np.zeros((1, 3), np.float32), size=0.0, color=(0.4, 1, 0.6, 1),
                                              pxMode=True)
@@ -305,8 +378,9 @@ class StarMapWindow(QMainWindow):
         for b in (b_sun, b_hood, b_gal):
             row.addWidget(b)
         ll.addLayout(row)
-        legend = QLabel("<small>Bright points: real stars (census, Hipparcos).<br>Fainter points near the "
-                        "view centre: procedural systems filling what the catalogues miss.<br>"
+        legend = QLabel("<small>Real stars (20-pc census, Hipparcos) and procedural systems filling what the "
+                        "catalogues miss. The brightest stars in view are shown; zooming out leaves the "
+                        "O and B stars of the arms against the glow of the old disc and bulge.<br>"
                         "Left-drag rotate · right- or middle-drag move · wheel zoom · double-click a star or any "
                         "place to centre there</small>")
         legend.setWordWrap(True)
@@ -389,43 +463,62 @@ class StarMapWindow(QMainWindow):
         else:
             self.fly(self.view.plane_point(x, y, self._centre()[2]), self.view.opts["distance"], animate=True)
 
-    def load_radius(self) -> float:
-        d = self.view.opts["distance"]
-        return 0.0 if d > 1500 else float(np.clip(0.5 * d, 12.0, 45.0))
-
     # --- level of detail ---------------------------------------------------------------------
+    def wanted_cells(self, centre, d) -> list[tuple]:
+        """(tier, cell) keys to load for a view: tiers 0-2 within their radius while they are
+        shown, nearest first; then the whole galaxy's tier-3 cells."""
+        out = []
+        for t in (0, 1, 2):
+            if tier_weight(t, d) > 0 or (t == 0 and d < 80):
+                r = min(TIER_RADIUS[t], d)
+                ks = gx.cells_within(t, centre, r)
+                size = gx.cell_size(t)
+                dist = [np.linalg.norm((np.array(k) + 0.5) * size - centre) for k in ks]
+                out += [(t, ks[i]) for i in np.argsort(dist)]
+        size = gx.cell_size(3)
+        dist = [np.linalg.norm((np.array(k) + 0.5) * size - centre) for _, k in self.tier3]
+        return out + [self.tier3[i] for i in np.argsort(dist)]
+
     def _tick(self):
         c, d = self._centre(), self.view.opts["distance"]
-        cam = (tuple(np.round(c / 3)), round(math.log(d) * 8))
+        cam = (tuple(np.round(c / max(d / 30, 1.0))), round(math.log(d) * 8))
         if cam != self._last_cam:
             self._last_cam = cam
-            r = self.load_radius()
-            want = set(gx.sectors_within(c, r)) if r > 0 else set()
-            for k in [k for k in self.loaded if k not in want]:
+            want = self.wanted_cells(c, d)
+            keep = set(want)
+            for k in [k for k in self.loaded if k not in keep]:
                 del self.loaded[k]
-            self.queue = sorted((k for k in want if k not in self.loaded),
-                                key=lambda k: np.linalg.norm((np.array(k) + 0.5) * gx.SECTOR_PC - c))
+                self._dirty = True
+            self.queue = [k for k in want if k not in self.loaded]
             self._update_cloud_alpha(d)
-            self._rebuild_proc()
-            self._restyle_real()
+            if self._dirty:
+                self._rebuild_proc()
+            self._restyle()
             self._update_labels()
-            self.hud.setText(f"view centre ({c[0]:.0f}, {c[1]:.0f}, {c[2]:.0f}) pc · camera distance "
-                             f"{d:,.0f} pc · rings every {self.hud_scale:g} pc · "
-                             f"{len(self.proc['sid'])} procedural systems loaded")
+            self._hud()
         if self.queue:
-            for _ in range(12):
-                if not self.queue:
-                    break
+            t0 = time.perf_counter()
+            while self.queue and time.perf_counter() - t0 < 0.035:
                 k = self.queue.pop(0)
-                self.loaded[k] = self._sector_points(k)
-            self._rebuild_proc()
-            if not self.queue:
-                self._update_labels()
-            self.hud.setText(f"loading sectors… {len(self.queue)} left")
+                self.loaded[k] = self._cell_points(*k)
+                self._dirty = True
+            if not self.queue or time.perf_counter() - self._last_rebuild > 0.4:
+                self._rebuild_proc()
+                self._restyle()
+                if not self.queue:
+                    self._update_labels()
+            self._hud()
 
-    def _sector_points(self, key):
-        sec = gx.sector(*key)
-        keep = rs.procedural_kept(key)
+    def _hud(self):
+        c, d = self._centre(), self.view.opts["distance"]
+        load = f" · loading {len(self.queue)} cells…" if self.queue else ""
+        self.hud.setText(f"view centre ({c[0]:.0f}, {c[1]:.0f}, {c[2]:.0f}) pc · camera distance {d:,.0f} pc · "
+                         f"rings every {self.hud_scale:g} pc · {int(self.proc_vis.sum() + self.real_vis.sum())} "
+                         f"stars shown of {len(self.proc['xyz']) + len(self.real_xyz):,}{load}")
+
+    def _cell_points(self, tier, key):
+        sec = gx.cell(tier, *key)
+        keep = rs.procedural_kept(key, tier)
         if not len(keep):
             return None
         c = sec.components
@@ -433,76 +526,82 @@ class StarMapWindow(QMainWindow):
         mv = rs.abs_v(c["teff"], c["luminosity"])
         flux = np.bincount(c["system"], weights=10 ** (-0.4 * mv), minlength=len(sec))
         absv = -2.5 * np.log10(np.maximum(flux, 1e-30))
-        teff = np.asarray(c["teff"])[first]
-        spt = np.asarray(c["spectral_type"])[first]
-        n = np.asarray(sec.systems["n_components"])
-        return (sec.xyz[keep].astype(np.float32), [sec.sid(int(j)) for j in keep], absv[keep], teff[keep],
-                list(spt[keep]), n[keep], list(sec.population[keep]))
+        return {"xyz": sec.xyz[keep].astype(np.float32), "sid": np.array([sec.sid(int(j)) for j in keep], object),
+                "absv": absv[keep], "teff": np.asarray(c["teff"])[first][keep],
+                "spt": np.asarray(c["spectral_type"], object)[first][keep],
+                "n": np.asarray(sec.systems["n_components"])[keep], "pop": np.asarray(sec.population, object)[keep],
+                "tier": np.full(len(keep), tier, np.int8)}
 
     def _rebuild_proc(self):
+        self._dirty = False
+        self._last_rebuild = time.perf_counter()
         parts = [v for v in self.loaded.values() if v is not None]
-        if not parts:
-            self.proc = {"xyz": np.zeros((0, 3), np.float32), "sid": [], "absv": np.zeros(0), "teff": np.zeros(0),
-                         "spt": [], "n": np.zeros(0, int), "pop": []}
-            self.proc_item.setData(pos=np.zeros((1, 3), np.float32), size=0.0)
-            return
-        self.proc = {"xyz": np.concatenate([p[0] for p in parts]), "sid": sum((p[1] for p in parts), []),
-                     "absv": np.concatenate([p[2] for p in parts]), "teff": np.concatenate([p[3] for p in parts]),
-                     "spt": sum((p[4] for p in parts), []), "n": np.concatenate([p[5] for p in parts]),
-                     "pop": sum((p[6] for p in parts), [])}
-        size, col = appearance(self.proc["absv"], self.proc["xyz"], self._eye(), self.view.opts["distance"],
-                               teff_colour(self.proc["teff"], 0.85), self._centre())
-        self.proc_item.setData(pos=self.proc["xyz"], color=col, size=size)
+        self.proc = {k: np.concatenate([p[k] for p in parts]) for k in parts[0]} if parts else _empty_proc()
+        self.proc_col = teff_colour(self.proc["teff"], 0.9)
 
     def _eye(self) -> np.ndarray:
         e = self.view.cameraPosition()
         return np.array([e.x(), e.y(), e.z()])
 
-    def _restyle_real(self):
-        if self.view.opts["distance"] > 3000:  # galaxy scale: individual stars are not resolved
-            self.real_vis = np.zeros(len(self.real_xyz), bool)
-            self.real_item.setVisible(False)
-            return
-        self.real_item.setVisible(True)
-        size, col = appearance(self.real_absv, self.real_xyz, self._eye(), self.view.opts["distance"], self.real_col,
-                               self._centre())
+    def _restyle(self):
+        """One magnitude limit for the real and procedural stars (the STAR_BUDGET brightest)."""
+        eye, d, c = self._eye(), self.view.opts["distance"], self._centre()
+        m_real = effective_mag(self.real_absv, self.real_xyz, eye, d, c, self.real_tier)
+        m_proc = effective_mag(self.proc["absv"], self.proc["xyz"], eye, d, c, self.proc["tier"])
+        m_lim = magnitude_limit(np.concatenate([m_real, m_proc]), d)
+        size, col = appearance(m_real, m_lim, self.real_col)
         self.real_vis = size > 0
         self.real_item.setData(color=col, size=size)
+        if len(m_proc):
+            size, col = appearance(m_proc, m_lim, self.proc_col)
+            self.proc_vis = size > 0
+            self.proc_item.setData(pos=self.proc["xyz"], color=col, size=size)
+        else:
+            self.proc_vis = np.zeros(0, bool)
+            self.proc_item.setData(pos=np.zeros((1, 3), np.float32), size=0.0)
 
     def _update_cloud_alpha(self, d):
-        a = float(np.clip((math.log10(max(d, 1)) - 2.7) / 1.0, 0.0, 1.0))
+        """The unresolved light brightens smoothly as the view widens (no switch-over)."""
+        a = float(np.clip((math.log10(max(d, 1)) - 2.5) / 1.6, 0.0, 1.0)) ** 1.5
         col = self.cloud_col.copy()
         col[:, 3] *= a
-        self.cloud.setData(color=col, size=2.0 if d > 8000 else 1.5)
-        self.cloud.setVisible(a > 0.01)
+        self.cloud.setData(color=col, size=1.5 + 0.5 * a)
+        self.cloud.setVisible(a > 0.005)
+        arm_a = 0.22 * float(np.clip((math.log10(max(d, 1)) - 3.3) / 0.7, 0.0, 1.0))
+        for it in self.arm_items:
+            it.setData(color=(0.3, 0.45, 0.8, arm_a))
+            it.setVisible(arm_a > 0.005)
 
     def _update_labels(self):
         c, d = self._centre(), self.view.opts["distance"]
         r = np.linalg.norm(self.real_xyz - c, axis=1)
-        vis = getattr(self, "real_vis", np.ones(len(r), bool))
+        vis = self.real_vis
         named = ~self.real["name"].str.startswith(("HIP ", "HD ", "2MASS", "SDSS", "WISE", "LP ", "G ")).to_numpy()
         cand = np.flatnonzero(named & vis & (r < 0.9 * d))
         app = self.real_absv[cand] + 5 * np.log10(np.maximum(np.linalg.norm(self.real_xyz[cand] - self._eye(), axis=1),
                                                              0.1) / 10)
-        cand = cand[np.argsort(app)][:30]
+        n_lab = int(np.clip(30 * (1500.0 / max(d, 1.0)) ** 0.5, 0, 30)) if d < 3000 else 0
+        cand = cand[np.argsort(app)][:n_lab]
         if self.selection is not None:
             sel_label = ([self.selection[2]], [self._sel_name()])
         else:
             sel_label = ([], [])
         if d > 3000:
-            cand = cand[:0]
             sel_label = (sel_label[0] + [np.zeros(3), np.array([gx.R0_PC, 0, -gx.Z_SUN_PC])],
                          sel_label[1] + ["Sun", "Galactic centre"])
         self.view.label_xyz = np.array(list(self.real_xyz[cand]) + sel_label[0], float).reshape(-1, 3)
         self.view.label_text = [str(n) for n in self.real["name"].iloc[cand]] + sel_label[1]
         # drop lines to the plane through the view centre, and a ring grid (Elite-style depth cues)
+        # (fewer as the view widens; none at galaxy scale, where they would only scratch the disc)
         eye = self._eye()
+        n_drop = int(np.clip(250 * (60.0 / max(d, 1.0)) ** 0.6, 0, 250)) if d < 1500 else 0
         near = np.flatnonzero(vis & (r < 0.45 * d))
         appm = self.real_absv[near] + 5 * np.log10(np.maximum(np.linalg.norm(self.real_xyz[near] - eye, axis=1), 0.1))
-        pp = [self.real_xyz[near[np.argsort(appm)][:250]]]
-        if len(self.proc["xyz"]):
+        pp = [self.real_xyz[near[np.argsort(appm)][:n_drop]]]
+        if len(self.proc["xyz"]) and n_drop:
             rp = np.linalg.norm(self.proc["xyz"] - c, axis=1)
-            sel = np.flatnonzero((rp < 0.3 * d) & (self.proc["absv"] < 9.0))[:150]
+            sel = np.flatnonzero((rp < 0.3 * d) & self.proc_vis)
+            sel = sel[np.argsort(self.proc["absv"][sel])][: n_drop // 2]
             pp.append(self.proc["xyz"][sel])
         top = np.concatenate(pp).astype(np.float32)
         bottom = top.copy()
@@ -530,7 +629,7 @@ class StarMapWindow(QMainWindow):
     # --- selection ----------------------------------------------------------------------
     def pick(self, x, y):
         best = None
-        vis = {"real": getattr(self, "real_vis", np.ones(len(self.real_xyz), bool))}
+        vis = {"real": self.real_vis, "proc": self.proc_vis}
         for kind, xyz in (("real", self.real_xyz), ("proc", self.proc["xyz"])):
             if not len(xyz):
                 continue
@@ -673,4 +772,5 @@ class StarMapWindow(QMainWindow):
         self.open_b.setText("Open system ▶")
 
 
-__all__ = ["GalaxyWalkSource", "StarMapWindow", "mag_size", "teff_colour"]
+__all__ = ["GalaxyWalkSource", "STAR_BUDGET", "StarMapWindow", "appearance", "effective_mag", "mag_size",
+           "magnitude_limit", "real_tier", "teff_colour", "tier_weight"]
