@@ -19,6 +19,17 @@ appropriate to the component and position (ages, [Fe/H]); IMF and multiplicity a
 ones everywhere (an assumption: no strong evidence for IMF variations within the Milky Way,
 Bastian, Covey & Meyer 2010).
 
+Brightness tiers. A map has to show the bright distant stars long before the faint nearby
+ones, and they must be the *same* stars when one flies there. So systems whose primary is
+a living star of 1.5 Msun or more (A, B, O stars and their giants; ~1 % of systems) are not
+drawn in the 10-pc sectors but in larger cells of their own (:data:`TIERS`): 1.5-3 Msun in
+80-pc cells, 3-8 Msun in 160-pc cells, >= 8 Msun in 1280-pc cells (~2e5 in the whole
+galaxy, all of which a full-galaxy view can load). The 10-pc sectors hold everything else
+(``draw_systems(exclude_alive_above=1.5)``) at the correspondingly reduced density. Large
+cells place their stars on an 8^3 sub-grid of densities (the disc scale height is smaller
+than a 1280-pc cell). IDs: ``G<ix>.<iy>.<iz>-<j>`` (sectors) and ``G<t>:<ix>.<iy>.<iz>-<j>``
+(tier t cells).
+
 Coordinates: heliocentric Galactic Cartesian, parsecs: x toward the Galactic centre
 (l = 0), y toward l = 90° (direction of rotation), z toward the north Galactic pole.
 
@@ -50,6 +61,8 @@ Model (Bland-Hawthorn & Gerhard 2016, BHG16, unless noted)
   with S the arm profile (0 between arms, 1 on an arm centre).
 * Local normalisation: 0.081 systems pc^-3 at the Sun (the 20-pc census component IMF of
   Kirkpatrick et al. 2024 divided by the generator's 1.37 components per system).
+* Youngest thin-disc age 1 Myr (the local model's 10 Myr would leave no living star above
+  ~20 Msun anywhere).
 * [Fe/H]: thin-disc radial gradient -0.06 dex/kpc (Genovali et al. 2014, Cepheids; flatter
   for old stars, kept common here); thick disc as locally; bulge N(0, 0.35) dex, 10 ± 1.5 Gyr
   (old, metal-rich on average, Zoccali et al. 2017); halo N(-1.5, 0.5), 11–13 Gyr.
@@ -83,6 +96,14 @@ DISC_EDGE, DISC_EDGE_W = 14000.0, 800.0
 DISC_HOLE = 2500.0
 OLD_ARM_CONTRAST = 0.15
 YOUNG_AGE_GYR = 0.3
+YOUNG_BOOST_MAX = 1.5
+THIN_MIN_AGE = 0.001  # Gyr
+
+# brightness tiers: tier -> (initial-mass range of a living primary in Msun, cell size in pc)
+TIERS = {1: (1.5, 3.0, 80.0), 2: (3.0, 8.0, 160.0), 3: (8.0, math.inf, 1280.0)}
+TIER_MIN_MASS = 1.5
+TIER_SUB = 8          # sub-grid per cell axis for the stars' positions
+_TIER_KEY = 1_000_000  # seed namespace of the tier cells
 
 # Reid et al. (2019) Table 2: name, beta range (deg), beta_kink (deg), R_kink (kpc),
 # psi before / after the kink (deg), width at R_kink (kpc), major arm?
@@ -154,8 +175,11 @@ def _arm_trees():
     return out
 
 
-def arm_strength(xyz_pc: np.ndarray) -> np.ndarray:
-    """Spiral-arm profile S in [0, 1] (1 on the centre line of an arm)."""
+ARM_GRID_PC = 25.0
+ARM_EXTENT_PC = 16500.0  # raster half-width around the Galactic centre
+
+
+def _arm_strength_exact(xyz_pc: np.ndarray) -> np.ndarray:
     xy = np.atleast_2d(xyz_pc)[:, :2]
     s = np.zeros(len(xy))
     for _, tree, width, taper in _arm_trees():
@@ -165,6 +189,39 @@ def arm_strength(xyz_pc: np.ndarray) -> np.ndarray:
         val[ok] = np.exp(-0.5 * (d[ok] / width[k[ok]]) ** 2) * taper[k[ok]]
         s = np.maximum(s, val)
     return s
+
+
+@lru_cache(maxsize=1)
+def _arm_raster() -> np.ndarray:
+    """S on a 25-pc grid (Galactocentric x, y), cached in data/galaxy/ (it takes a few s)."""
+    from .paths import DATA_DIR
+    n = int(round(2 * ARM_EXTENT_PC / ARM_GRID_PC)) + 1
+    path = DATA_DIR / "galaxy" / f"arm_raster_{n}.npy"
+    if path.exists():
+        return np.load(path)
+    g = np.linspace(-ARM_EXTENT_PC, ARM_EXTENT_PC, n)
+    xx, yy = np.meshgrid(g + R0_PC, g, indexing="ij")
+    ras = _arm_strength_exact(np.stack([xx.ravel(), yy.ravel()], 1)).reshape(n, n).astype(np.float32)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    np.save(path, ras)
+    return ras
+
+
+def arm_strength(xyz_pc: np.ndarray) -> np.ndarray:
+    """Spiral-arm profile S in [0, 1] (1 on the centre line of an arm), bilinear in a 25-pc
+    raster of the exact profile (arms are >= 80 pc wide)."""
+    xy = np.atleast_2d(np.asarray(xyz_pc, float))[:, :2]
+    ras = _arm_raster()
+    n = ras.shape[0]
+    fx = (xy[:, 0] - R0_PC + ARM_EXTENT_PC) / ARM_GRID_PC
+    fy = (xy[:, 1] + ARM_EXTENT_PC) / ARM_GRID_PC
+    inside = (fx >= 0) & (fx < n - 1) & (fy >= 0) & (fy < n - 1)
+    i = np.clip(np.floor(fx).astype(int), 0, n - 2)
+    j = np.clip(np.floor(fy).astype(int), 0, n - 2)
+    u, v = np.clip(fx - i, 0, 1), np.clip(fy - j, 0, 1)
+    s = (ras[i, j] * (1 - u) * (1 - v) + ras[i + 1, j] * u * (1 - v) + ras[i, j + 1] * (1 - u) * v
+         + ras[i + 1, j + 1] * u * v)
+    return np.where(inside, s, 0.0).astype(float)
 
 
 def arm_lines() -> list[tuple[str, np.ndarray]]:
@@ -256,10 +313,23 @@ class _Fixed(PopulationModel):
         age = np.clip(rng.normal(self.age_mu, self.age_sd, n), *self.age_lim)
         return age, np.clip(rng.normal(self.feh_mu, self.feh_sd, n), -2.0, 0.5)
 
+    def age_cdf(self, t):
+        from scipy.special import ndtr
+        lo, hi = self.age_lim
+        t = np.asarray(t, float)
+        return np.where(t <= lo, 0.0, np.where(t >= hi, 1.0, ndtr((t - self.age_mu) / self.age_sd)))
+
+    def ages_and_feh_below(self, rng, tmax):
+        from scipy.special import ndtri
+        tmax = np.asarray(tmax, float)
+        u = rng.random(len(tmax)) * self.age_cdf(tmax)
+        age = np.clip(self.age_mu + self.age_sd * ndtri(np.clip(u, 1e-300, 1 - 1e-16)), *self.age_lim)
+        return np.minimum(age, tmax), np.clip(rng.normal(self.feh_mu, self.feh_sd, len(tmax)), -2.0, 0.5)
+
 
 @lru_cache(maxsize=1)
 def _base() -> PopulationModel:
-    return default_model()
+    return replace(default_model(), thin_disk_min_age=THIN_MIN_AGE)
 
 
 FEH_GRADIENT = -0.06e-3  # dex per pc
@@ -298,12 +368,14 @@ class Sector:
     xyz: np.ndarray            # n x 3 pc
     population: np.ndarray     # component name per system
     real: np.ndarray | None = None  # index into the real-star list, -1 for procedural
+    tier: int = 0
 
     def __len__(self):
         return len(self.xyz)
 
     def sid(self, j: int) -> str:
-        return f"G{self.key[0]}.{self.key[1]}.{self.key[2]}-{j}"
+        t = f"{self.tier}:" if self.tier else ""
+        return f"G{t}{self.key[0]}.{self.key[1]}.{self.key[2]}-{j}"
 
 
 def _concat(tables: list[dict], offsets: list[int] | None = None, key="system") -> dict:
@@ -326,16 +398,16 @@ def sector(ix: int, iy: int, iz: int, procedural_only: bool = False) -> Sector:
     sys_t, comp_t, xyz, pop = [], [], [], []
     n_off = 0
     for k, comp in enumerate(COMPONENTS):
-        lam = float(d[comp][0]) * vol
+        lam = float(d[comp][0]) * vol * (1.0 - sum(tier_fraction(t, comp) for t in TIERS))
         n = int(rng.poisson(lam))
         if n == 0:
             continue
-        s, c = draw_systems(n, seed=ids.mix(seed, k), model=population(comp, R))
+        s, c = draw_systems(n, seed=ids.mix(seed, k), model=population(comp, R), exclude_alive_above=TIER_MIN_MASS)
         keep = np.ones(n, bool)
         if comp == "thin":
             # young stars follow the arms
             s_here, s_sun = float(d["arm"][0]), float(arm_strength(np.zeros((1, 3)))[0])
-            p_young = min((0.1 + s_here) / (0.1 + s_sun), 1.5)
+            p_young = min((0.1 + s_here) / (0.1 + s_sun), YOUNG_BOOST_MAX)
             young = s["age_gyr"] < YOUNG_AGE_GYR
             u = rng.random(n)
             keep = ~young | (u < p_young)
@@ -343,7 +415,8 @@ def sector(ix: int, iy: int, iz: int, procedural_only: bool = False) -> Sector:
             if p_young > 1:
                 n_extra = int(rng.poisson((p_young - 1) * young.sum()))
                 if n_extra:
-                    s2, c2 = draw_systems(4 * n_extra + 8, seed=ids.mix(seed, k, 1), model=population(comp, R))
+                    s2, c2 = draw_systems(4 * n_extra + 8, seed=ids.mix(seed, k, 1), model=population(comp, R),
+                                          exclude_alive_above=TIER_MIN_MASS)
                     yj = np.flatnonzero(s2["age_gyr"] < YOUNG_AGE_GYR)[:n_extra]
                     s, c = _append_young(s, c, s2, c2, yj)
                     keep = np.concatenate([keep, np.ones(len(yj), bool)])
@@ -383,48 +456,137 @@ def _append_young(s, c, s2, c2, rows):
     return _concat([s, a]), _concat([c, b])
 
 
-def sectors_within(centre_pc, radius_pc) -> list[tuple[int, int, int]]:
+def cell_size(tier: int) -> float:
+    return SECTOR_PC if tier == 0 else TIERS[tier][2]
+
+
+@lru_cache(maxsize=None)
+def tier_fraction(tier: int, comp: str) -> float:
+    """Fraction of a component's systems that belong to brightness tier ``tier``."""
+    lo, hi, _ = TIERS[tier]
+    return population(comp, R0_PC).alive_fraction(lo, hi)
+
+
+@lru_cache(maxsize=1)
+def _s_sun() -> float:
+    return float(arm_strength(np.zeros((1, 3)))[0])
+
+
+def cell_of(tier: int, xyz_pc) -> tuple[int, int, int]:
+    return tuple(int(v) for v in np.floor(np.asarray(xyz_pc, float) / cell_size(tier)))
+
+
+@lru_cache(maxsize=2048)
+def cell(tier: int, ix: int, iy: int, iz: int) -> Sector:
+    """The systems of brightness tier ``tier`` in cell (ix, iy, iz) (tier 0: :func:`sector`)."""
+    if tier == 0:
+        return sector(ix, iy, iz)
+    lo_m, hi_m, size = TIERS[tier]
+    seed = ids.mix(GALAXY_SEED, _TIER_KEY + tier, ix, iy, iz)
+    rng = np.random.default_rng(seed)
+    sub = size / TIER_SUB
+    g = (np.arange(TIER_SUB) + 0.5) * sub
+    centres = np.array([ix, iy, iz]) * size + np.stack(np.meshgrid(g, g, g, indexing="ij"), -1).reshape(-1, 3)
+    d = densities(centres)
+    R = float(galactocentric(((np.array([ix, iy, iz]) + 0.5) * size)[None, :])[0][0])
+    sys_t, comp_t, xyz_t, pop = [], [], [], []
+    for k, comp in enumerate(COMPONENTS):
+        f = tier_fraction(tier, comp)
+        if f <= 0:
+            continue
+        boost = YOUNG_BOOST_MAX if comp == "thin" else 1.0  # thinned below
+        counts = rng.poisson(d[comp] * f * sub**3 * boost)
+        n = int(counts.sum())
+        if n == 0:
+            continue
+        xyz = centres[np.repeat(np.arange(len(centres)), counts)] + (rng.random((n, 3)) - 0.5) * sub
+        s, c = draw_systems(n, seed=ids.mix(seed, k), model=population(comp, R), alive_range=(lo_m, hi_m))
+        if comp == "thin":
+            # young stars follow the arms (as in the sectors), old ones do not
+            p_young = np.minimum((0.1 + arm_strength(xyz)) / (0.1 + _s_sun()), YOUNG_BOOST_MAX)
+            keep = rng.random(n) < np.where(s["age_gyr"] < YOUNG_AGE_GYR, p_young, 1.0) / boost
+            s, c = _take(s, c, np.flatnonzero(keep))
+            xyz = xyz[keep]
+        m = len(s["age_gyr"])
+        if m == 0:
+            continue
+        c["system"] = c["system"] + sum(len(t["age_gyr"]) for t in sys_t)
+        sys_t.append(s)
+        comp_t.append(c)
+        xyz_t.append(xyz)
+        pop += [comp] * m
+    if not sys_t:
+        empty = draw_systems(1, seed=1)
+        s, c = _take(*empty, np.zeros(0, int))
+        return Sector((ix, iy, iz), s, c, np.zeros((0, 3)), np.array([], dtype=object), tier=tier)
+    return Sector((ix, iy, iz), _concat(sys_t), _concat(comp_t), np.concatenate(xyz_t), np.array(pop, dtype=object),
+                  tier=tier)
+
+
+def tier_totals() -> dict[int, float]:
+    """Expected number of systems of each brightness tier in the galaxy (tier 0: the rest)."""
+    tot = galaxy_totals()
+    out = {t: sum(tot[c] * tier_fraction(t, c) for c in COMPONENTS) for t in TIERS}
+    out[0] = sum(tot.values()) - sum(out.values())
+    return out
+
+
+def cells_within(tier: int, centre_pc, radius_pc) -> list[tuple[int, int, int]]:
+    """Cells of a tier that touch the sphere (centre, radius)."""
+    size = cell_size(tier)
     c = np.asarray(centre_pc, float)
-    lo = np.floor((c - radius_pc) / SECTOR_PC).astype(int)
-    hi = np.floor((c + radius_pc) / SECTOR_PC).astype(int)
+    lo = np.floor((c - radius_pc) / size).astype(int)
+    hi = np.floor((c + radius_pc) / size).astype(int)
     g = np.stack(np.meshgrid(*[np.arange(lo[i], hi[i] + 1) for i in range(3)], indexing="ij"), -1).reshape(-1, 3)
-    cen = (g + 0.5) * SECTOR_PC
-    near = np.linalg.norm(cen - c, axis=1) <= radius_pc + SECTOR_PC * 0.87
+    cen = (g + 0.5) * size
+    near = np.linalg.norm(cen - c, axis=1) <= radius_pc + size * 0.87
     return [tuple(map(int, k)) for k in g[near]]
 
 
+def sectors_within(centre_pc, radius_pc) -> list[tuple[int, int, int]]:
+    return cells_within(0, centre_pc, radius_pc)
+
+
 def system(sid: str, *, moons: bool = True):
-    """The complete system with a galaxy ID ``G<ix>.<iy>.<iz>-<j>``."""
-    key, j = parse(sid)
-    sec = sector(*key)
+    """The complete system with a galaxy ID ``G<ix>.<iy>.<iz>-<j>`` or ``G<t>:<ix>.<iy>.<iz>-<j>``."""
+    tier, key, j = parse(sid)
+    sec = cell(tier, *key)
     s, c = ids.subset(sec.systems, sec.components, j)
-    b = ids.complete(s, c, ids.mix(GALAXY_SEED, *key, j), moons=moons, meta={"ids": [sid]})
+    seed = ids.mix(GALAXY_SEED, *key, j) if tier == 0 else ids.mix(GALAXY_SEED, _TIER_KEY + tier, *key, j)
+    b = ids.complete(s, c, seed, moons=moons, meta={"ids": [sid]})
     b.meta["position_pc"] = [round(float(v), 3) for v in sec.xyz[j]]
     b.meta["population"] = str(sec.population[j])
     return b
 
 
-def parse(sid: str) -> tuple[tuple[int, int, int], int]:
+def parse(sid: str) -> tuple[int, tuple[int, int, int], int]:
+    """(tier, cell key, index) of a galaxy ID."""
     import re
-    m = re.match(r"^G(-?\d+)\.(-?\d+)\.(-?\d+)-(\d+)$", sid.strip())
-    if not m:
-        raise ValueError(f"not a galaxy ID: {sid!r} (expected e.g. G0.1.-2-5)")
-    return (int(m.group(1)), int(m.group(2)), int(m.group(3))), int(m.group(4))
+    m = re.match(r"^G(?:(\d):)?(-?\d+)\.(-?\d+)\.(-?\d+)-(\d+)$", sid.strip())
+    if not m or (m.group(1) and int(m.group(1)) not in TIERS):
+        raise ValueError(f"not a galaxy ID: {sid!r} (expected e.g. G0.1.-2-5 or G2:0.0.0-5)")
+    return (int(m.group(1) or 0), (int(m.group(2)), int(m.group(3)), int(m.group(4))), int(m.group(5)))
 
 
 def random_system(seed: int, tries: int = 50) -> str:
     """ID of a pseudo-random procedural system, each system of the galaxy (about) equally
-    likely: a point drawn from the galaxy's density (:func:`sample_cloud`), then a system
-    drawn uniformly among the shown procedural systems of its sector (redrawn if the sector
-    has none). The same ``seed`` always gives the same system."""
+    likely: a point drawn from the galaxy's density (:func:`sample_cloud`), a brightness tier
+    with the probabilities of the systems there, then a system drawn uniformly among the shown
+    procedural systems of that tier's cell around the point (redrawn if there are none).
+    The same ``seed`` always gives the same system."""
     from . import realstars as rs
     for t in range(tries):
         pt = sample_cloud(1, seed=ids.mix(seed, t))[0][0]
-        key = sector_of(pt)
-        kept = rs.procedural_kept(key)
+        rng = np.random.default_rng(ids.mix(seed, t, 1))
+        d = densities(pt[None, :])
+        tot = sum(float(d[c][0]) for c in COMPONENTS)
+        p = [sum(float(d[c][0]) * tier_fraction(k, c) for c in COMPONENTS) / tot for k in TIERS]
+        u = rng.random()
+        tier = next((k for k, cp in zip(TIERS, np.cumsum(p)) if u < cp), 0)
+        key = cell_of(tier, pt)
+        kept = rs.procedural_kept(key, tier)
         if len(kept):
-            rng = np.random.default_rng(ids.mix(seed, t, 1))
-            return sector(*key).sid(int(kept[rng.integers(len(kept))]))
+            return cell(tier, *key).sid(int(kept[rng.integers(len(kept))]))
     raise RuntimeError("no procedural system found")
 
 
@@ -515,6 +677,7 @@ def galaxy_totals() -> dict[str, float]:
             "halo": float(halo)}
 
 
-__all__ = ["ARMS", "GALAXY_SEED", "R0_PC", "SECTOR_PC", "Sector", "arm_lines", "arm_strength", "densities",
+__all__ = ["ARMS", "GALAXY_SEED", "R0_PC", "SECTOR_PC", "Sector", "TIERS", "arm_lines", "arm_strength", "cell",
+           "cell_of", "cell_size", "cells_within", "densities", "tier_fraction", "tier_totals",
            "galactocentric", "galaxy_totals", "parse", "random_system", "sample_cloud", "sector", "sector_of", "sectors_within",
            "system", "total_density"]

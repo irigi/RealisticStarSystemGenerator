@@ -11,10 +11,11 @@ def test_blend_replaces_exactly_what_the_catalogues_hold():
     d_real = np.linalg.norm(rs.xyz(), axis=1)
     n_cat = n_real = 0
     for lo, hi in ((25, 40), (40, 55)):
-        for k in gx.sectors_within((0, 0, 0), hi):
-            sec = gx.sector(*k)
-            d = np.linalg.norm(sec.xyz, axis=1)
-            n_cat += int((rs.in_catalogue(sec) & (d > lo) & (d < hi)).sum())
+        for tier in [0, *gx.TIERS]:  # the bright stars are in the brightness-tier cells
+            for k in gx.cells_within(tier, (0, 0, 0), hi):
+                sec = gx.cell(tier, *k)
+                d = np.linalg.norm(sec.xyz, axis=1)
+                n_cat += int((rs.in_catalogue(sec) & (d > lo) & (d < hi)).sum())
         n_real += int(((d_real > lo) & (d_real < hi) & (rs.stars()["source"] == "hipparcos").to_numpy()).sum())
     assert n_cat == pytest.approx(n_real, rel=0.1)
     # within the census volume every procedural system is replaced

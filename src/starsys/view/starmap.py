@@ -600,9 +600,9 @@ class StarMapWindow(QMainWindow):
         self.results.clear()
         if t.startswith("G"):
             try:
-                key, j = gx.parse(t)
-                sec = gx.sector(*key)
-                self.fly(sec.xyz[j], 25)
+                tier, key, j = gx.parse(t)
+                sec = gx.cell(tier, *key)
+                self.fly(sec.xyz[j], 25, animate=True)
                 self.statusBar().showMessage(f"{t}: {sec.population[j]} population")
                 self.selection = ("id", t, sec.xyz[j])
                 self._mark(sec.xyz[j])

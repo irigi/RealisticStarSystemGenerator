@@ -264,9 +264,11 @@ def search(text: str, limit: int = 20) -> list[int]:
     return hits[:limit]
 
 
-def procedural_kept(key) -> np.ndarray:
-    """Indices of the procedural systems of a sector that are shown (not in the catalogues)."""
-    sec = gx.sector(*key)
+@lru_cache(maxsize=4096)
+def procedural_kept(key, tier: int = 0) -> np.ndarray:
+    """Indices of the procedural systems of a cell (default: a 10-pc sector) that are shown
+    (not in the catalogues)."""
+    sec = gx.cell(tier, *key)
     return np.flatnonzero(~in_catalogue(sec))
 
 
