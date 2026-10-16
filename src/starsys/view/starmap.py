@@ -216,7 +216,7 @@ class MapView(gl.GLViewWidget):
 
 
 class _Conditioner(QObject):
-    done = Signal(object, str)
+    done = Signal(object, str, str)
     failed = Signal(str)
 
     def __init__(self, lookup, name):
@@ -225,7 +225,7 @@ class _Conditioner(QObject):
 
     def run(self):
         try:
-            self.done.emit(rs.real_system(self.lookup, self.name), self.name)
+            self.done.emit(rs.real_system(self.lookup, self.name), self.name, self.lookup)
         except Exception as e:  # shown in the status bar
             self.failed.emit(f"{type(e).__name__}: {e}")
 
@@ -737,13 +737,20 @@ class StarMapWindow(QMainWindow):
         worker = _Conditioner(lookup, name)
         worker.moveToThread(th)
         th.started.connect(worker.run)
-        worker.done.connect(lambda _b, nm, lk=lookup: self._open_walk(GalaxyWalkSource(f"R:{nm}", (lk, nm))))
-        worker.failed.connect(lambda msg: (self.statusBar().showMessage(f"could not condition: {msg}"),
-                                           self.open_b.setEnabled(True)))
+        # bound methods of this window (not lambdas): Qt then runs them in the GUI thread
+        worker.done.connect(self._real_ready)
+        worker.failed.connect(self._real_failed)
         worker.done.connect(th.quit)
         worker.failed.connect(th.quit)
         self._thread = (th, worker)
         th.start()
+
+    def _real_ready(self, _bundle, name, lookup):
+        self._open_walk(GalaxyWalkSource(f"R:{name}", (lookup, name)))
+
+    def _real_failed(self, msg):
+        self.statusBar().showMessage(f"could not condition: {msg}")
+        self.open_b.setEnabled(True)
 
     def _open_walk(self, source):
         from .app import SystemWindow
@@ -756,6 +763,9 @@ class StarMapWindow(QMainWindow):
     def _followed(self, sid, bundle, i):
         """The system viewer moved to ``sid``: mark it on the map and fly there."""
         if sid.startswith("R:"):
+            hits = rs.search(sid[2:], limit=1)
+            if hits and (self.selection is None or self.selection[:2] != ("real", hits[0])):
+                self.select_real(hits[0], centre=True)
             return
         pos = bundle.meta.get("position_pc")
         if pos is None:
