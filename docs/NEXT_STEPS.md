@@ -30,6 +30,20 @@ not kept as open tasks.
    seed, Next/Previous as a random walk through the galaxy, mouse re-centring, artwork at the
    zoom's resolution, and brightness tiers so that the map keeps the same density of stars
    from 50 pc to the whole galaxy without a switch to a separate cloud.
+6. **Resolved bulge (and old populations)** — planned (user request 2026-10-16, not started).
+   The bulge is only the point cloud of unresolved light today: its stars are ~10 Gyr old, so
+   none falls into the brightness tiers (living primaries >= 1.5 Msun), and its 10-pc sectors
+   (~5600 systems each at the centre) load only within 45 pc of the view centre. Zooming in
+   should show real, clickable systems drawn the same way as everywhere else. Sketch:
+   - a brightness tier of evolved low-mass stars (red giants, red clump, AGB of old primaries
+     < 1.5 Msun; also covers the K-giant proposal below), with cells large enough to reach
+     the bulge from a far view, so the bulge, halo and old disc become stars at kpc scales;
+   - a level of detail for the dense tier-0 sectors near the centre (load fewer, nearer
+     sectors there; cache), so that zooming into the bulge ends in its full population;
+   - the cloud's share of each component reduced by what the tiers now draw, so the glow
+     does not double-count, and the cloud fades as the stars take over (no seam);
+   - check: star counts per tier against `tier_totals()`, bulge luminosity function / red
+     clump against the density model, load time at the Galactic centre.
 
 ## Next (proposals)
 
