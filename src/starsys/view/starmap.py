@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (QHBoxLayout, QLabel, QLineEdit, QListWidget, QLis
                                QPushButton, QSplitter, QStatusBar, QTextBrowser, QVBoxLayout, QWidget)
 
 from .. import galaxy as gx
+from .. import ids
 from .. import realstars as rs
 from . import info as info_mod
 from .art import star_rgb
@@ -122,47 +123,61 @@ class _Conditioner(QObject):
     done = Signal(object, str)
     failed = Signal(str)
 
-    def __init__(self, lookup, n):
+    def __init__(self, lookup, name):
         super().__init__()
-        self.lookup, self.n = lookup, n
+        self.lookup, self.name = lookup, name
 
     def run(self):
         try:
-            from ..generate import Systems
-            from ..real import condition as cd
-            from ..real.catalog import find
-            rec = find(self.lookup)
-            c = cd.condition(rec, n=self.n)
-            self.done.emit(Systems.from_conditioned(c), rec.name)
+            self.done.emit(rs.real_system(self.lookup, self.name), self.name)
         except Exception as e:  # shown in the status bar
             self.failed.emit(f"{type(e).__name__}: {e}")
 
 
-class GalaxySource:
-    """Prev/Next over a list of galaxy IDs (the neighbours of a star), for the system viewer."""
+class GalaxyWalkSource:
+    """Previous / Next for the system viewer opened from the map: system 0 is the star that was
+    opened (real or procedural), systems 1, 2, ... are random systems of the galaxy
+    (:func:`starsys.galaxy.random_system`) from a seed fixed by the first star, so Previous
+    always walks back the same way."""
 
-    def __init__(self, sids: list[str]):
-        self.sids = list(sids)
+    def __init__(self, origin: str, real: tuple[str, str] | None = None):
+        """``origin``: the first system's ID (a galaxy ID, or ``R:<name>`` for a real star with
+        ``real = (catalogue lookup, name)``)."""
+        self._set(origin, real)
+
+    def _set(self, origin, real):
+        import zlib
+        self.origin, self.real = origin, real
+        self.seed = ids.mix(gx.GALAXY_SEED, zlib.crc32(origin.encode()))
+        self._sids: dict[int, str] = {0: origin}
 
     def __len__(self):
-        return len(self.sids)
+        return 10**12
+
+    def sid(self, k: int) -> str:
+        if k not in self._sids:
+            self._sids[k] = gx.random_system(ids.mix(self.seed, k))
+        return self._sids[k]
 
     def get(self, k):
-        return gx.system(self.sids[k]), 0
+        if k == 0 and self.real is not None:
+            return rs.real_system(*self.real), 0
+        return gx.system(self.sid(k)), 0
 
     def label(self, k):
-        return self.sids[k]
+        return self.sid(k)
 
     def index_of(self, text):
         t = text.strip()
-        if t in self.sids:
-            return self.sids.index(t)
+        for k, v in self._sids.items():
+            if v == t:
+                return k
         try:
             gx.parse(t)
         except ValueError:
             return None
-        self.sids.append(t)
-        return len(self.sids) - 1
+        self._set(t, None)  # a new walk from the typed system
+        return 0
 
 
 class StarMapWindow(QMainWindow):
@@ -440,6 +455,8 @@ class StarMapWindow(QMainWindow):
 
     def _sel_name(self) -> str:
         kind, i, _ = self.selection
+        if kind == "id":
+            return i
         return str(self.real["name"].iloc[i]) if kind == "real" else self.proc["sid"][i]
 
     # --- selection ----------------------------------------------------------------------
@@ -518,7 +535,9 @@ class StarMapWindow(QMainWindow):
                 sec = gx.sector(*key)
                 self.fly(sec.xyz[j], 25)
                 self.statusBar().showMessage(f"{t}: {sec.population[j]} population")
-                self._open_galaxy([t])
+                self.selection = ("id", t, sec.xyz[j])
+                self._mark(sec.xyz[j])
+                self._open_walk(GalaxyWalkSource(t))
                 return
             except (ValueError, IndexError):
                 pass
@@ -538,18 +557,19 @@ class StarMapWindow(QMainWindow):
             return
         kind, i, xyz = self.selection
         if kind == "proc":
-            # Prev/Next walk the loaded neighbours by distance from this one
-            order = np.argsort(np.linalg.norm(self.proc["xyz"] - xyz, axis=1))[:200]
-            self._open_galaxy([self.proc["sid"][j] for j in order])
+            self._open_walk(GalaxyWalkSource(self.proc["sid"][i]))
             return
-        lookup = str(self.real["lookup"].iloc[i])
-        self.statusBar().showMessage(f"conditioning planetary systems on {lookup} (takes a few seconds)…")
+        if kind == "id":
+            self._open_walk(GalaxyWalkSource(i))
+            return
+        lookup, name = str(self.real["lookup"].iloc[i]), str(self.real["name"].iloc[i])
+        self.statusBar().showMessage(f"conditioning a planetary system on {name} (takes a few seconds)…")
         self.open_b.setEnabled(False)
         th = QThread(self)
-        worker = _Conditioner(lookup, 12)
+        worker = _Conditioner(lookup, name)
         worker.moveToThread(th)
         th.started.connect(worker.run)
-        worker.done.connect(self._open_bundle)
+        worker.done.connect(lambda _b, nm, lk=lookup: self._open_walk(GalaxyWalkSource(f"R:{nm}", (lk, nm))))
         worker.failed.connect(lambda msg: (self.statusBar().showMessage(f"could not condition: {msg}"),
                                            self.open_b.setEnabled(True)))
         worker.done.connect(th.quit)
@@ -557,20 +577,31 @@ class StarMapWindow(QMainWindow):
         self._thread = (th, worker)
         th.start()
 
-    def _open_bundle(self, bundle, name):
-        from .app import BundleSource, SystemWindow
-        w = SystemWindow(BundleSource(bundle, name))
-        w.setWindowTitle(f"starsys — {name}")
-        w.show()
-        self.windows.append(w)
-        self.open_b.setEnabled(True)
-        self.statusBar().showMessage(f"{name}: {len(bundle)} conditioned realisations")
-
-    def _open_galaxy(self, sids):
+    def _open_walk(self, source):
         from .app import SystemWindow
-        w = SystemWindow(GalaxySource(sids))
+        self.open_b.setEnabled(True)
+        w = SystemWindow(source, on_load=self._followed)
         w.show()
         self.windows.append(w)
+        self.statusBar().showMessage(f"{source.origin}: Next / Previous walk through random systems of the galaxy")
+
+    def _followed(self, sid, bundle, i):
+        """The system viewer moved to ``sid``: mark it on the map and fly there."""
+        if sid.startswith("R:"):
+            return
+        pos = bundle.meta.get("position_pc")
+        if pos is None:
+            return
+        xyz = np.asarray(pos, float)
+        if self.selection is not None and np.allclose(self.selection[2], xyz):
+            return
+        self.selection = ("id", sid, xyz)
+        self._mark(xyz)
+        self.fly(xyz, min(self.view.opts["distance"], 40.0))
+        self.info.setHtml(f"<h2>{sid}</h2><p class='desc'>Procedural system ({bundle.meta.get('population', '')} "
+                          f"population), shown in the system viewer.</p>")
+        self.open_b.setEnabled(True)
+        self.open_b.setText("Open system ▶")
 
 
-__all__ = ["GalaxySource", "StarMapWindow", "mag_size", "teff_colour"]
+__all__ = ["GalaxyWalkSource", "StarMapWindow", "mag_size", "teff_colour"]

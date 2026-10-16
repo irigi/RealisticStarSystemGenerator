@@ -270,5 +270,30 @@ def procedural_kept(key) -> np.ndarray:
     return np.flatnonzero(~in_catalogue(sec))
 
 
-__all__ = ["abs_v", "extinction", "in_catalogue", "procedural_kept", "search", "stars", "survey_limit",
-           "system_vmag", "xyz"]
+REAL_SEED = 20261016
+
+
+def real_seed(lookup: str) -> int:
+    """The fixed seed of a real star's planetary system (from its catalogue identifier)."""
+    import zlib
+
+    from . import ids
+    return ids.mix(REAL_SEED, zlib.crc32(str(lookup).encode()))
+
+
+@lru_cache(maxsize=64)
+def real_system(lookup: str, name: str | None = None):
+    """The one planetary system of a real star: a single realisation conditioned on the star
+    (:func:`starsys.real.condition.condition`) with a seed fixed by its catalogue identifier,
+    so it is the same every time (and in every session). ID ``R:<name>``."""
+    from .generate import Systems
+    from .real import condition as cd
+    from .real.catalog import find
+    rec = find(lookup)
+    b = Systems.from_conditioned(cd.condition(rec, n=1, seed=real_seed(lookup)))
+    b.meta["ids"] = [f"R:{name or rec.name}"]
+    return b
+
+
+__all__ = ["abs_v", "extinction", "in_catalogue", "procedural_kept", "real_seed", "real_system", "search",
+           "stars", "survey_limit", "system_vmag", "xyz"]

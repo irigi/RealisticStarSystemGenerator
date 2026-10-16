@@ -70,21 +70,29 @@ def test_window_navigation_and_selection(tmp_path):
     w.close()
 
 
-def test_galaxy_source_and_star_appearance():
+def test_galaxy_walk_and_star_appearance():
     from PySide6.QtWidgets import QApplication
 
     from starsys import galaxy as gx
+    from starsys import realstars as rs
     from starsys.view.app import SystemWindow
-    from starsys.view.starmap import GalaxySource, appearance, teff_colour
+    from starsys.view.starmap import GalaxyWalkSource, appearance, teff_colour
     app = QApplication.instance() or QApplication([])
     sec = gx.sector(20, 5, 0)
-    src = GalaxySource([sec.sid(0), sec.sid(1)])
-    w = SystemWindow(src, 0)
+    src = GalaxyWalkSource(sec.sid(0))
+    seen = []
+    w = SystemWindow(src, 0, on_load=lambda sid, b, i: seen.append(sid))
     w.load(0)
-    assert w.id_edit.text() == sec.sid(0)
+    assert w.id_edit.text() == sec.sid(0) and not w.prev_b.isEnabled()
     w.step(+1)
-    assert w.k == 1
-    assert src.index_of(sec.sid(3)) == 2
+    w.step(+1)
+    w.step(-1)
+    w.step(-1)
+    assert w.k == 0 and seen[0] == seen[-1] == sec.sid(0) and seen[1] == seen[3] != seen[0]
+    # the walk is fixed by its first star
+    assert GalaxyWalkSource(sec.sid(0)).label(2) == seen[2]
+    assert src.index_of(seen[1]) == 1 and src.index_of(sec.sid(3)) == 0 and src.label(0) == sec.sid(3)
+    assert rs.real_seed("HD 197345") == rs.real_seed("HD 197345") != rs.real_seed("HD 10700")
     w.close()
     app.processEvents()
     col = teff_colour(np.array([3000.0, 6000.0, 20000.0]))

@@ -412,6 +412,22 @@ def parse(sid: str) -> tuple[tuple[int, int, int], int]:
     return (int(m.group(1)), int(m.group(2)), int(m.group(3))), int(m.group(4))
 
 
+def random_system(seed: int, tries: int = 50) -> str:
+    """ID of a pseudo-random procedural system, each system of the galaxy (about) equally
+    likely: a point drawn from the galaxy's density (:func:`sample_cloud`), then a system
+    drawn uniformly among the shown procedural systems of its sector (redrawn if the sector
+    has none). The same ``seed`` always gives the same system."""
+    from . import realstars as rs
+    for t in range(tries):
+        pt = sample_cloud(1, seed=ids.mix(seed, t))[0][0]
+        key = sector_of(pt)
+        kept = rs.procedural_kept(key)
+        if len(kept):
+            rng = np.random.default_rng(ids.mix(seed, t, 1))
+            return sector(*key).sid(int(kept[rng.integers(len(kept))]))
+    raise RuntimeError("no procedural system found")
+
+
 # ------------------------------------------------------------------------------- far view
 
 def sample_cloud(n: int = 200000, seed: int = 7) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -500,5 +516,5 @@ def galaxy_totals() -> dict[str, float]:
 
 
 __all__ = ["ARMS", "GALAXY_SEED", "R0_PC", "SECTOR_PC", "Sector", "arm_lines", "arm_strength", "densities",
-           "galactocentric", "galaxy_totals", "parse", "sample_cloud", "sector", "sector_of", "sectors_within",
+           "galactocentric", "galaxy_totals", "parse", "random_system", "sample_cloud", "sector", "sector_of", "sectors_within",
            "system", "total_density"]

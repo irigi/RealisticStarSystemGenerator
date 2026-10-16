@@ -44,3 +44,12 @@ def test_populations_vary_with_position():
     outer = g.population("thin", 12000.0)
     inner = g.population("thin", 5000.0)
     assert outer.feh_thin_intercept < inner.feh_thin_intercept
+
+
+def test_random_system_is_fixed_and_follows_the_galaxy():
+    import collections
+    a = [g.random_system(k) for k in range(60)]
+    assert a == [g.random_system(k) for k in range(60)] and len(set(a)) == 60
+    pops = collections.Counter(g.sector(*g.parse(s)[0]).population[g.parse(s)[1]] for s in a)
+    # thin disc and bulge dominate by number (galaxy_totals: 46 % and 41 %)
+    assert pops["thin"] > 10 and pops["bulge"] > 10

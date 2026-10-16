@@ -129,9 +129,11 @@ QTabBar::tab:selected { background: #24406e; }
 
 
 class SystemWindow(QMainWindow):
-    def __init__(self, source, start: int = 0, filt: str = "all systems"):
+    def __init__(self, source, start: int = 0, filt: str = "all systems", on_load=None):
+        """``on_load(label, bundle, i)`` is called whenever a system is shown."""
         super().__init__()
         self.source = source
+        self.on_load = on_load
         self.k = start
         self.model: md.SystemModel | None = None
         self.selected: str | None = None
@@ -261,6 +263,8 @@ class SystemWindow(QMainWindow):
         self.next_b.setEnabled(k + 1 < len(self.source))
         self.statusBar().showMessage(f"{self.source.label(k)}: {d['n_stars']} star(s), {d['n_planets']} planet(s), "
                                      f"{d['n_moons']} moon(s) — click a body for details")
+        if self.on_load is not None:
+            self.on_load(self.source.label(k), bundle, i)
 
     def step(self, direction: int):
         f = FILTERS[self.filter.currentText()]
