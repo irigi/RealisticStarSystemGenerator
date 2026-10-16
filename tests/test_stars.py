@@ -39,3 +39,19 @@ def test_draw_systems_structure():
     # Components of a system are coeval.
     assert np.allclose(comp["age_gyr"], systems["age_gyr"][comp["system"]])
     assert set(np.unique(comp["kind"])) <= {"star", "BD", "WD", "NS", "BH"}
+
+
+def test_draw_systems_bright_subsets():
+    from starsys.stars.population import default_model, draw_systems, lifetime_gyr
+    s, c = draw_systems(400, seed=3, alive_range=(3.0, 8.0))
+    m1 = s["primary_initial_mass"]
+    assert (m1 >= 3.0).all() and (m1 < 8.0).all()
+    assert (s["age_gyr"] < lifetime_gyr(m1, s["feh"])).all()
+    s, c = draw_systems(3000, seed=4, exclude_alive_above=1.5)
+    m1 = s["primary_initial_mass"]
+    assert not ((m1 >= 1.5) & (s["age_gyr"] < lifetime_gyr(m1, s["feh"]))).any()
+    # the fraction agrees with plain draws
+    s, _ = draw_systems(200000, seed=5)
+    m1 = s["primary_initial_mass"]
+    alive = ((m1 >= 1.5) & (m1 < 3.0) & (s["age_gyr"] < lifetime_gyr(m1, s["feh"]))).mean()
+    assert alive == pytest.approx(default_model().alive_fraction(1.5, 3.0), rel=0.1)
