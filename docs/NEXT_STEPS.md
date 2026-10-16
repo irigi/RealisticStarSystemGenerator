@@ -86,7 +86,7 @@ Validation and known limits: `docs/validation/phase6.md`; assumptions: `docs/ASS
 
 ```bash
 source .venv/bin/activate
-pytest -q                                  # all tests should pass (109)
+pytest -q                                  # all tests should pass (112)
 python -m starsys -n 5 --seed 1             # five random systems, printed
 python -m starsys --id S1-42                # one system by its stable ID
 python -m starsys.view                      # system viewer (Previous/Next)

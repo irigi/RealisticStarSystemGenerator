@@ -236,7 +236,8 @@ and returns a `Systems` bundle of the four tables; conditioned systems convert w
   (one row per star, planets left to right, moons below; procedural artwork from
   `starsys.view.art`, deterministic per body, physics-guided palettes), an orbit view at true
   separations (face-on, linear/log, habitable zones, time controls), a body tree and a
-  plain-language information panel; Previous/Next over a seed sequence or a real star's
+  plain-language information panel (stellar orbits barycentric: the members of each pair
+  opposite about their centre of mass); Previous/Next over a seed sequence or a real star's
   conditioned realisations; opened from the star map, Next jumps to a random system of the
   galaxy (every system equally likely, a fixed sequence per starting star) and Previous walks
   back. Artwork is re-rendered at the zoom (up to 1024 px) in worker threads.
@@ -251,8 +252,9 @@ and returns a `Systems` bundle of the four tables; conditioned systems convert w
   they are; a procedural system is removed exactly when those catalogues would contain it
   (their selection functions), so the generated stars fill only what the catalogues miss.
 - **Star map** (`python -m starsys.view --galaxy`): pyqtgraph OpenGL; one star field at every
-  zoom: the N brightest stars in view (6000, up to 30000 for the whole galaxy) of the real
-  stars and the loaded tier cells, each tier fading out as a whole once the view outgrows its
+  zoom: the N brightest stars in view (6000, up to 30000 for the whole galaxy; every star in
+  close views) of the real stars and the loaded tier cells, sized against a smooth function
+  of the zoom (no jumps), each tier fading out as a whole once the view outgrows its
   cells, against the unresolved glow of the old stars; search, click or double-click to
   centre, right-drag to move, open a system (real stars run the conditioning of §3.5).
 

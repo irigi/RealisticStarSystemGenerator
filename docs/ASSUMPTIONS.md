@@ -33,6 +33,16 @@ assumptions.
   population, so it is self-consistent. Moving to MDS17's periods would raise the boost
   towards ~1.8 and must still pass the census check. Kept: the census is the direct
   measurement.
+- **Stability of triples and quadruples.** Each further companion orbits the inner group at
+  least 3x wider than the previous orbit, and the outer orbit must also pass Mardling & Aarseth
+  (2001, eq. 90): outer periastron / inner a > 2.8 [(1 + q_out)(1 + e_out)/sqrt(1 - e_out)]^(2/5),
+  with q_out = m_out / m_inner. The inclination factor (1 - 0.3 i/pi) only relaxes the limit, so
+  it is left out (conservative). Unstable outer orbits (55% of them under the 3x rule alone,
+  mostly eccentric ones) get period and eccentricity redrawn from the same distributions until
+  stable. Those systems change; all others are identical, because the redraws use a separate
+  random stream. The effect is to shift the outer periods of multiples somewhat wider than the
+  per-level period distribution alone gives, as the observed stable hierarchies are
+  (Tokovinin 2014).
 
 ## Inner planets (HM-C, 3–300 d)
 
@@ -263,6 +273,15 @@ one of comparable mass: by Teff (7200, 10500, 20000 K for 1.5, 3, 8 Msun; Pecaut
 2013), cool giants (class II-III) as 1.5-3 Msun, supergiants by absolute V (< -4: >= 8 Msun).
 Not represented at large distances: red giants of < 1.5 Msun stars (they are in the 10-pc
 sectors, loaded only near the view centre).
+
+Drawing (a display choice, not physics):
+- A star's point size follows its apparent magnitude from the camera against a reference
+  magnitude that depends smoothly on the zoom only (about the faintest star shown in a
+  Sun-centred view). Sizes therefore never jump when tiers fade or cells load.
+- The rank-based limit (the N brightest shown) only fades the faintest out over 1.5 mag. It
+  eases towards its target over a few frames.
+- Below ~40 pc camera distance the limit opens up to every star (brown dwarfs included), so
+  the solar neighbourhood is shown completely.
 
 ## Moon tidal heating cap (phase 7)
 

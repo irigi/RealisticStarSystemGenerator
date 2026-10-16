@@ -171,6 +171,15 @@ class OrbitView(QWidget):
             pen = QPen(SELECT if name == self.selected else col, 1.6 if name == self.selected else 1.0)
             p.setPen(pen)
             p.drawPolyline(QPolygonF([QPointF(*q) for q in pts]))
+        # centres of mass of inner stellar pairs (hierarchical triples, quadruples)
+        pen = QPen(ORBIT_STAR, 1.0, Qt.PenStyle.DashLine)
+        for com, path in md.barycentre_paths(m, pos):
+            p.setPen(pen)
+            p.drawPolyline(QPolygonF([QPointF(*q) for q in self.to_screen(path)]))
+            q = self.to_screen(com)[0]
+            p.setPen(QPen(ORBIT_STAR, 1))
+            p.drawLine(QPointF(q[0] - 3, q[1] - 3), QPointF(q[0] + 3, q[1] + 3))
+            p.drawLine(QPointF(q[0] - 3, q[1] + 3), QPointF(q[0] + 3, q[1] - 3))
         # bodies (stars last so they stay visible over close-in planets? no: stars first)
         order = sorted(m.order, key=lambda n: {"star": 0, "barycentre": 1, "planet": 2, "moon": 3}[m.bodies[n].cat])
         labels: list[tuple[float, float]] = []

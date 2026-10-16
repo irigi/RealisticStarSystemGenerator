@@ -292,6 +292,51 @@ def lifetime_gyr(initial_mass, feh) -> np.ndarray:
     return out
 
 
+MA_COEFF = 2.8   # Mardling & Aarseth (2001), eq. 90, without the inclination factor (conservative)
+
+
+def stable_triple(a_in, a_out, e_out, q_out):
+    """Mardling & Aarseth (2001) stability of a hierarchical triple: outer periastron over
+    inner semi-major axis above 2.8 [(1 + q_out)(1 + e_out) / sqrt(1 - e_out)]^(2/5), with
+    q_out = m_out / m_inner. (The inclination factor 1 - 0.3 i/pi, which only relaxes the
+    limit, is left out.)"""
+    lim = MA_COEFF * ((1 + q_out) * (1 + e_out) / np.sqrt(1 - e_out)) ** 0.4
+    return a_out * (1 - e_out) > lim * a_in
+
+
+def _stabilise(model, rng, m1, sys_idx, mi, period, a_au, ecc, mass_in):
+    """Redraw (period, eccentricity) of the outer orbits that are unstable by
+    :func:`stable_triple` against the next inner orbit, in place, level by level. The redraws
+    come from a child stream of ``rng`` (its state is not advanced), so stable systems are
+    exactly as before this check existed. Gives up after 200 tries with a circular orbit at
+    the limit (rare: very wide inner pairs)."""
+    if len(sys_idx) < 3:
+        return
+    fix = np.random.default_rng(rng.bit_generator.seed_seq.spawn(1)[0])
+    for k in range(2, len(sys_idx)):
+        inner = np.searchsorted(sys_idx[k - 1], sys_idx[k])
+        a_in = a_au[k - 1][inner]
+        q = mi[k] / mass_in[k]
+        mtot = mass_in[k] + mi[k]
+        bad = np.flatnonzero(~stable_triple(a_in, a_au[k], ecc[k], q))
+        for _ in range(200):
+            if not len(bad):
+                break
+            m = m1[sys_idx[k][bad]]
+            logp = model.draw_log_period(fix, m)
+            a = (mtot[bad] * (10**logp / YEAR_DAYS) ** 2) ** (1 / 3)
+            e = model.draw_eccentricity(fix, 10**logp)
+            ok = stable_triple(a_in[bad], a, e, q[bad]) & (a <= 4e4)
+            i = bad[ok]
+            a_au[k][i], period[k][i], ecc[k][i] = a[ok], 10**logp[ok], e[ok]
+            bad = bad[~ok]
+        if len(bad):
+            lim = MA_COEFF * (1 + q[bad]) ** 0.4 * a_in[bad] * 1.01
+            a_au[k][bad] = np.maximum(a_au[k][bad], lim)
+            ecc[k][bad] = 0.0
+            period[k][bad] = YEAR_DAYS * np.sqrt(a_au[k][bad] ** 3 / mtot[bad])
+
+
 def draw_systems(n, seed=None, model: PopulationModel | None = None, alive_range=None, exclude_alive_above=None):
     """Draw ``n`` stellar systems.
 
@@ -305,8 +350,8 @@ def draw_systems(n, seed=None, model: PopulationModel | None = None, alive_range
     the inner subsystem (``period_days``, ``a_au``, ``ecc`` and the orientation ``incl_sky``,
     ``node``, ``omega`` in radians, isotropic; NaN for primaries).
     Hierarchy: companion k orbits the centre of mass of components 0..k-1, with
-    orbits at least 3x wider than the previous one (a rough dynamical-stability
-    requirement for hierarchical multiples).
+    orbits at least 3x wider than the previous one and, with eccentricities, stable by the
+    Mardling & Aarseth (2001) criterion (see :func:`_stabilise`).
     """
     model = model or default_model()
     rng = np.random.default_rng(seed)
@@ -328,6 +373,7 @@ def draw_systems(n, seed=None, model: PopulationModel | None = None, alive_range
     period, a_au, ecc = [np.full(n, np.nan)], [np.full(n, np.nan)], [np.full(n, np.nan)]
     inner_mass = m1.copy()
     last_a = np.zeros(n)
+    mass_in = [None]
     for k in range(1, 4):
         sel = np.flatnonzero(ncomp >= k)
         if len(sel) == 0:
@@ -352,8 +398,10 @@ def draw_systems(n, seed=None, model: PopulationModel | None = None, alive_range
         period.append(p)
         a_au.append(a)
         ecc.append(model.draw_eccentricity(rng, p))
+        mass_in.append(inner_mass[sel].copy())
         inner_mass[sel] = mtot
         last_a[sel] = a
+    _stabilise(model, rng, m1, sys_idx, mi, period, a_au, ecc, mass_in)
 
     sys_idx = np.concatenate(sys_idx)
     order = np.lexsort((np.concatenate(role), sys_idx))

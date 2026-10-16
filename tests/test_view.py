@@ -179,8 +179,11 @@ def test_star_map_shows_a_budget_of_stars_at_every_zoom():
             if not w.queue:
                 break
         w._tick()
+        while w._ease_limit():
+            pass
         shown = int(w.real_vis.sum() + w.proc_vis.sum())
-        assert 0.7 * star_budget(d) <= shown <= star_budget(d) + 1, (d, shown)
+        # (fewer where the faint tiers have faded and the bright ones are sparse)
+        assert 0.4 * star_budget(d) <= shown <= 1.02 * star_budget(d), (d, shown)  # limit eased to within 0.02 mag
         if d > 1000:  # no faint tier is shown once the view has outgrown it
             assert not (w.proc_vis & (w.proc["tier"] == 0)).any()
     w.close()
@@ -189,3 +192,41 @@ def test_star_map_shows_a_budget_of_stars_at_every_zoom():
 def gx_r0():
     from starsys import galaxy as gx
     return gx.R0_PC
+
+
+def test_star_sizes_change_smoothly_with_zoom_and_close_views_show_every_star():
+    from starsys.view.starmap import appearance, base_size, magnitude_limit, reference_mag
+    ds = np.geomspace(5, 50000, 400)
+    ref = np.array([reference_mag(d) for d in ds])
+    s0 = np.array([base_size(d) for d in ds])
+    assert np.abs(np.diff(ref)).max() < 0.1 and np.abs(np.diff(s0)).max() < 0.02
+    # a bright star's size does not depend on how many fainter stars there are
+    col = np.ones((2, 4), np.float32)
+    a, _ = appearance(np.array([3.0, 9.0]), 10.0, col, 1000.0)
+    b, _ = appearance(np.array([3.0, 9.0]), 14.0, col, 1000.0)
+    assert a[0] == b[0] and a[1] < b[1]
+    # close views (Sun to Procyon): no limit short of the faintest dwarfs; Barnard's Star
+    # (M_V 13.2, 1.8 pc) a few pixels across
+    assert magnitude_limit(np.zeros(10), 10.0) > 25
+    size, _ = appearance(np.array([13.2 + 5 * np.log10(10 / 10)]), magnitude_limit(np.zeros(10), 10.0),
+                         col[:1], 10.0)
+    assert size[0] >= 3.0
+
+
+def test_stellar_orbits_are_drawn_barycentric():
+    m = md.build(ex.system_dict(ids.system("S1-1"), 0))  # a triple: (A+B)+C
+    assert len(m.stars) == 3
+    for t in (0.0, 1234.5, 5e5):
+        pos = md.positions(m, t)
+        for s in m.stars:
+            path = md.orbit_path(m, s.name, pos, 4000)
+            span = np.ptp(path, axis=0).max()
+            assert np.linalg.norm(path - np.array(pos[s.name]), axis=1).min() < 0.01 * span
+        (com, path), = md.barycentre_paths(m, pos, 4000)
+        assert np.linalg.norm(path - com, axis=1).min() < 0.01 * np.ptp(path, axis=0).max()
+        # A and B on opposite sides of their centre of mass, which C and A+B straddle in turn
+        mass = {s.name: s.d["mass"] for s in m.stars}
+        ab = (mass["A"] * np.array(pos["A"]) + mass["B"] * np.array(pos["B"])) / (mass["A"] + mass["B"])
+        assert np.allclose(ab, com)
+        assert np.dot(np.array(pos["A"]) - ab, np.array(pos["B"]) - ab) < 0
+        assert np.dot(ab, np.array(pos["C"])) < 0

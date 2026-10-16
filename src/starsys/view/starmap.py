@@ -101,28 +101,56 @@ def effective_mag(abs_v, xyz, eye, view_dist, centre, tier=None):
     m = m + np.clip((rc / view_dist - 0.5) * 6.0, 0.0, None) ** 1.5
     if tier is not None:
         w = tier_weight(tier, view_dist)
-        m = np.where(w > 0, m + 3.0 * (1 - w), np.inf)
+        m = np.where(w > 0, m + 1.5 * (1 - w), np.inf)
     return m
+
+
+# reference apparent magnitude of the point sizes against log10(camera distance / pc): about
+# the faintest shown in a Sun-centred view (see magnitude_limit), but smooth in the zoom, so
+# that a star's size never jumps when the set of stars shown changes
+_REF_LOGD = np.array([1.0, 1.6, 2.2, 3.2, 4.65])
+_REF_MAG = np.array([13.5, 13.5, 10.0, 10.5, 13.5])
+
+
+def reference_mag(view_dist: float) -> float:
+    return float(np.interp(math.log10(max(view_dist, 1.0)), _REF_LOGD, _REF_MAG))
+
+
+def base_size(view_dist: float) -> float:
+    """Point size (px) of a star at the reference magnitude: larger in close views, where
+    single faint dwarfs must be easy to see, smaller for the crowded galaxy."""
+    return float(np.interp(math.log10(max(view_dist, 1.0)), [1.6, 3.7], [3.4, 2.2]))
 
 
 def magnitude_limit(m_eff: np.ndarray, view_dist: float, budget: int | None = None) -> float:
     """Faintest effective magnitude shown: the ``budget``-th brightest (default
-    :func:`star_budget`), and no fainter than a limit that follows the zoom (so a sparse region
-    is not filled with the faintest dwarfs)."""
+    :func:`star_budget`), and no fainter than a cap above the reference magnitude (so a sparse
+    region is not filled with the faintest dwarfs). In close views (< ~40 pc) the cap opens
+    up to every star, brown dwarfs included."""
     budget = star_budget(view_dist) if budget is None else budget
-    cap = 12.5 + 5 * math.log10(max(view_dist, 1.0) / 10.0)
+    near = float(np.clip((math.log10(100.0) - math.log10(max(view_dist, 1.0))) / 0.4, 0.0, 1.0))
+    cap = reference_mag(view_dist) + 3.0 + 12.0 * near
     if len(m_eff) > budget:
         return float(min(np.partition(m_eff, budget)[budget], cap))
     return cap
 
 
-def appearance(m_eff, m_lim, base_col):
-    """Sizes and colours from effective magnitudes against the limit."""
-    x = m_lim - np.asarray(m_eff, float)
-    size = np.clip(1.0 + 0.5 * x, 0.0, 11.0).astype(np.float32)
+def appearance(m_eff, m_lim, base_col, view_dist=None, weight=None):
+    """Sizes and colours. The size follows the star's effective magnitude against the smooth
+    :func:`reference_mag` of the zoom; the limit only fades the faintest out (over 1.5 mag),
+    as does a tier's ``weight`` while the view outgrows its cells."""
+    m = np.asarray(m_eff, float)
+    if view_dist is None:  # sizes relative to the limit
+        ref, s0 = m_lim, 1.0
+    else:
+        ref, s0 = reference_mag(view_dist), base_size(view_dist)
+    fade = np.clip((m_lim - m) / 1.5, 0.0, 1.0)
+    if weight is not None:
+        fade = fade * weight
+    size = np.clip(s0 + 0.4 * (ref - m), 0.75 * s0, 12.0) * (0.55 + 0.45 * fade)
+    size = np.where(fade > 0, size, 0.0).astype(np.float32)
     col = base_col.copy()
-    col[:, 3] = np.clip(x / 1.5, 0.0, 1.0) * base_col[:, 3]
-    size[~(x > 0)] = 0.0
+    col[:, 3] = fade * base_col[:, 3]
     return size, col
 
 
@@ -344,6 +372,8 @@ class StarMapWindow(QMainWindow):
         self.proc_vis = np.zeros(0, bool)
         self._dirty = False
         self._last_rebuild = 0.0
+        self._mlim = None
+        self._mlim_target = 0.0
 
         self.sel_item = gl.GLScatterPlotItem(pos=np.zeros((1, 3), np.float32), size=0.0, color=(0.4, 1, 0.6, 1),
                                              pxMode=True)
@@ -508,6 +538,8 @@ class StarMapWindow(QMainWindow):
                 if not self.queue:
                     self._update_labels()
             self._hud()
+        if self._ease_limit() and not self.queue:
+            self._hud()
 
     def _hud(self):
         c, d = self._centre(), self.view.opts["distance"]
@@ -544,21 +576,38 @@ class StarMapWindow(QMainWindow):
         return np.array([e.x(), e.y(), e.z()])
 
     def _restyle(self):
-        """One magnitude limit for the real and procedural stars (the STAR_BUDGET brightest)."""
+        """One magnitude limit for the real and procedural stars (the STAR_BUDGET brightest).
+        The limit follows its target over a few frames (see _tick), so stars fade in and out
+        rather than pop when cells load or tiers fade."""
         eye, d, c = self._eye(), self.view.opts["distance"], self._centre()
-        m_real = effective_mag(self.real_absv, self.real_xyz, eye, d, c, self.real_tier)
-        m_proc = effective_mag(self.proc["absv"], self.proc["xyz"], eye, d, c, self.proc["tier"])
-        m_lim = magnitude_limit(np.concatenate([m_real, m_proc]), d)
-        size, col = appearance(m_real, m_lim, self.real_col)
+        self._m_real = effective_mag(self.real_absv, self.real_xyz, eye, d, c, self.real_tier)
+        self._m_proc = effective_mag(self.proc["absv"], self.proc["xyz"], eye, d, c, self.proc["tier"])
+        self._mlim_target = magnitude_limit(np.concatenate([self._m_real, self._m_proc]), d)
+        if self._mlim is None:
+            self._mlim = self._mlim_target
+        self._apply_style()
+
+    def _apply_style(self):
+        d = self.view.opts["distance"]
+        size, col = appearance(self._m_real, self._mlim, self.real_col, d, tier_weight(self.real_tier, d))
         self.real_vis = size > 0
         self.real_item.setData(color=col, size=size)
-        if len(m_proc):
-            size, col = appearance(m_proc, m_lim, self.proc_col)
+        if len(self._m_proc):
+            size, col = appearance(self._m_proc, self._mlim, self.proc_col, d, tier_weight(self.proc["tier"], d))
             self.proc_vis = size > 0
             self.proc_item.setData(pos=self.proc["xyz"], color=col, size=size)
         else:
             self.proc_vis = np.zeros(0, bool)
             self.proc_item.setData(pos=np.zeros((1, 3), np.float32), size=0.0)
+
+    def _ease_limit(self) -> bool:
+        """Move the magnitude limit a step towards its target; True if it moved."""
+        if self._mlim is None or abs(self._mlim - self._mlim_target) < 0.02:
+            return False
+        step = self._mlim_target - self._mlim
+        self._mlim += float(np.clip(0.3 * step, -0.6, 0.6)) if abs(step) > 0.05 else step
+        self._apply_style()
+        return True
 
     def _update_cloud_alpha(self, d):
         """The unresolved light brightens smoothly as the view widens (no switch-over)."""

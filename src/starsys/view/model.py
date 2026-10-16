@@ -191,23 +191,65 @@ def positions(m: SystemModel, t_days: float) -> dict[str, tuple[float, float]]:
     return pos
 
 
+def _star_levels(m: SystemModel):
+    """Stars by role, their masses, and per companion k the relative orbit and masses
+    (inner group 0..k-1 against star k)."""
+    stars = sorted(m.stars, key=lambda b: b.d.get("role", 0))
+    mass = np.array([float(b.d.get("mass") or 0.1) for b in stars])
+    return stars, mass
+
+
 def orbit_path(m: SystemModel, name: str, pos: dict, n: int = 240) -> np.ndarray | None:
-    """Points (n x 2, au) of a body's orbit around its parent's current position."""
+    """Points (n x 2, au) of a body's orbit around its parent's current position.
+
+    Stars are drawn on their barycentric orbits: companion k and the centre of mass of the
+    inner group 0..k-1 move on opposite, similar ellipses (sizes in the ratio of the masses)
+    about the centre of mass of 0..k. The primary gets the orbit opposite its first companion;
+    the inner groups' centres of mass are in :func:`barycentre_paths`."""
     b = m.bodies[name]
+    if b.cat == "star":
+        stars, mass = _star_levels(m)
+        k = stars.index(b)
+        if k == 0:
+            if len(stars) < 2 or stars[1].orbit is None:
+                return None
+            return _bary_path(stars, mass, pos, 1, inner=True, n=n)
+        if b.orbit is None:
+            return None
+        return _bary_path(stars, mass, pos, k, inner=False, n=n)
     o = b.orbit
     if o is None:
         return None
     a, e, ang, _, _ = o
     E = np.linspace(0, 2 * np.pi, n)
     x, y = orbit_xy(a, e, ang, E)
-    if b.cat == "star":
-        # companion orbit drawn around the inner group's centre of mass (approximate: current COM)
-        inner = [s for s in m.stars if s.d.get("role", 0) < b.d.get("role", 0)]
-        w = np.array([float(s.d.get("mass") or 0.1) for s in inner])
-        c = (w[:, None] * np.array([pos[s.name] for s in inner])).sum(0) / w.sum()
-    else:
-        c = np.array(pos.get(b.parent, (0.0, 0.0)))
+    c = np.array(pos.get(b.parent, (0.0, 0.0)))
     return np.stack([x + c[0], y + c[1]], axis=1)
 
 
-__all__ = ["Body", "SystemModel", "build", "kepler", "orbit_path", "orbit_xy", "positions"]
+def _bary_path(stars, mass, pos, k, inner, n=240):
+    a, e, ang, _, _ = stars[k].orbit
+    m_in, m_k = mass[:k].sum(), mass[k]
+    f = -m_k / (m_in + m_k) if inner else m_in / (m_in + m_k)
+    E = np.linspace(0, 2 * np.pi, n)
+    x, y = orbit_xy(a, e, ang, E)
+    xy = np.array([pos[s.name] for s in stars[:k + 1]])
+    c = (mass[:k + 1, None] * xy).sum(0) / mass[:k + 1].sum()
+    return np.stack([f * x + c[0], f * y + c[1]], axis=1)
+
+
+def barycentre_paths(m: SystemModel, pos: dict, n: int = 240) -> list[tuple[np.ndarray, np.ndarray]]:
+    """(current position, orbit points) of the centre of mass of each inner group of two or
+    more stars (A+B in an (A+B)+C triple), on its barycentric orbit opposite the next companion."""
+    stars, mass = _star_levels(m)
+    out = []
+    for k in range(2, len(stars)):
+        if stars[k].orbit is None:
+            continue
+        xy = np.array([pos[s.name] for s in stars[:k]])
+        com = (mass[:k, None] * xy).sum(0) / mass[:k].sum()
+        out.append((com, _bary_path(stars, mass, pos, k, inner=True, n=n)))
+    return out
+
+
+__all__ = ["Body", "SystemModel", "barycentre_paths", "build", "kepler", "orbit_path", "orbit_xy", "positions"]

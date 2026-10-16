@@ -55,3 +55,17 @@ def test_draw_systems_bright_subsets():
     m1 = s["primary_initial_mass"]
     alive = ((m1 >= 1.5) & (m1 < 3.0) & (s["age_gyr"] < lifetime_gyr(m1, s["feh"]))).mean()
     assert alive == pytest.approx(default_model().alive_fraction(1.5, 3.0), rel=0.1)
+
+
+def test_hierarchical_multiples_are_stable():
+    from starsys.stars import population as pp
+    s, c = pp.draw_systems(40000, seed=11)
+    role, sysi, m, a, e = c["role"], c["system"], c["initial_mass"], c["a_au"], c["ecc"]
+    outer = np.flatnonzero(role >= 2)
+    assert len(outer) > 500
+    start = np.searchsorted(sysi, sysi[outer])
+    m_in = np.array([m[i0:i].sum() for i0, i in zip(start, outer)])
+    assert pp.stable_triple(a[outer - 1], a[outer], e[outer], m[outer] / m_in).all()
+    # the check only redraws unstable orbits: everything else is as drawn
+    inner = role <= 1
+    assert np.isfinite(a[role == 1]).all() and (e[outer] < 1).all() and inner.sum() > 0
