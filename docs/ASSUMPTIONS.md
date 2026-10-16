@@ -33,6 +33,16 @@ assumptions.
   population, so it is self-consistent. Moving to MDS17's periods would raise the boost
   towards ~1.8 and must still pass the census check. Kept: the census is the direct
   measurement.
+- **Stability of triples and quadruples.** Each further companion orbits the inner group at
+  least 3x wider than the previous orbit, and the outer orbit must also pass Mardling & Aarseth
+  (2001, eq. 90): outer periastron / inner a > 2.8 [(1 + q_out)(1 + e_out)/sqrt(1 - e_out)]^(2/5),
+  with q_out = m_out / m_inner. The inclination factor (1 - 0.3 i/pi) only relaxes the limit, so
+  it is left out (conservative). Unstable outer orbits (55% of them under the 3x rule alone,
+  mostly eccentric ones) get period and eccentricity redrawn from the same distributions until
+  stable. Those systems change; all others are identical, because the redraws use a separate
+  random stream. The effect is to shift the outer periods of multiples somewhat wider than the
+  per-level period distribution alone gives, as the observed stable hierarchies are
+  (Tokovinin 2014).
 
 ## Inner planets (HM-C, 3–300 d)
 
@@ -228,3 +238,76 @@ because hot-Jupiter rates are already calibrated.
 - **Settings:** `condition(surveys=None)` conditions on the known planets only (prior
   everywhere else); `surveys=[...]` replaces the default set; `known=[...]` replaces the
   archive's planets (e.g. to add a candidate or drop one).
+
+## Galaxy model (starsys.galaxy)
+
+The procedural Milky Way (star map) uses an empirical density model; every parameter and
+its source is listed in the `starsys.galaxy` module docstring. In short: R0 = 8.15 kpc and
+spiral arms from maser parallaxes (Reid et al. 2019, arms extended beyond the data at 10°
+pitch), thin/thick disc, bar and IMF-independent normalisations from Bland-Hawthorn &
+Gerhard (2016), halo profile from Juric et al. (2008) normalised to 1.4e9 Msun (Deason et al.
+2019), local density 0.081 systems/pc^3 from the 20-pc census. Assumed, not measured: the
+local IMF and multiplicity everywhere; one [Fe/H] gradient (-0.06 dex/kpc) for all thin-disc
+ages; arm contrast ±15 % for old stars and arm confinement of stars younger than 300 Myr.
+
+Brightness tiers (for the star map; the galaxy's content is unchanged): systems whose primary
+is a living star of 1.5-3, 3-8 and >= 8 Msun are drawn in 80, 160 and 1280-pc cells; the
+10-pc sectors hold the rest. The mass edges are round numbers near F0, B9 and B2 main-sequence
+stars; the cell sizes give a few hundred systems per cell near the Sun. Large cells place
+stars on an 8^3 sub-grid of the density. The youngest thin-disc stars are 1 Myr old in the
+galaxy (the local model's 10 Myr minimum would leave no living star above ~20 Msun). The arm
+profile is read from a 25-pc raster of the exact one (error < 0.015). A random system ("Next"
+from the map) is every galaxy system about equally likely: a point from the density, then a
+uniform pick in its cell. Within ~400 pc the map shows more O/B-class real stars than the model
+(74 within 220 pc against ~21 expected): the Gould Belt / Sco-Cen excess is real and kept.
+
+## Real stars in the star map (starsys.realstars)
+
+Real systems come from the 20-pc census (treated as complete) and the Hipparcos Survey (complete
+to V = 7.9 + 1.1|sin b| before G5, 7.3 + 1.1|sin b| later; ESA 1997). A procedural system is
+removed when these catalogues would list it. Assumed: Hipparcos parallax error 0.9 mas for all
+Survey stars; extinction 0.7 mag/kpc in a 100-pc dust layer; bolometric corrections from the
+Mamajek dwarf table also for giants. Census entries without a catalogue Teff (most of them)
+take it from their spectral type. For the map's tiers a real star counts like a procedural
+one of comparable mass: by Teff (7200, 10500, 20000 K for 1.5, 3, 8 Msun; Pecaut & Mamajek
+2013), cool giants (class II-III) as 1.5-3 Msun, supergiants by absolute V (< -4: >= 8 Msun).
+Not represented at large distances: red giants of < 1.5 Msun stars (they are in the 10-pc
+sectors, loaded only near the view centre).
+
+Drawing (a display choice, not physics):
+- A star's point size follows its apparent magnitude from the camera against a reference
+  magnitude that depends smoothly on the zoom only (about the faintest star shown in a
+  Sun-centred view). Sizes therefore never jump when tiers fade or cells load.
+- The rank-based limit (the N brightest shown) only fades the faintest out over 1.5 mag. It
+  eases towards its target over a few frames.
+- Below ~40 pc camera distance the limit opens up to every star (brown dwarfs included), so
+  the solar neighbourhood is shown completely.
+
+## The Solar System (starsys.real.solar)
+
+Opening the Sun shows the real Solar System instead of a conditioned realisation: the eight
+planets and Pluto with 23 major moons. Sources:
+- **Orbits:** J2000 mean elements from Standish (JPL SSD, "Keplerian elements for approximate
+  positions of the major planets", Table 1). They are referred to the ecliptic, not the
+  invariable plane.
+- **Physical data:** NASA Planetary Fact Sheet.
+- **Moons:** JPL SSD satellite mean elements and physical parameters.
+- **Tidal heat:** Io (Lainey et al. 2009), Enceladus (Howett et al. 2011), Europa (order of
+  magnitude).
+
+Equilibrium temperatures, insolation and habitable-zone labels follow the generator's
+conventions (Bond albedo 0.3, Kopparapu et al. 2014), so they compare with generated planets.
+Artwork stays procedural, with a colour hint per body; there are no real surface maps and no
+rings. Dwarf planets other than Pluto are left out, since their J2000 mean anomalies are not in
+the Standish table.
+
+Not yet used: the measured orbits of real binaries (Sirius A-B: a = 7.50", e = 0.59,
+P = 50.1 yr). Conditioning draws a companion orbit from the projected separation alone.
+
+## Moon tidal heating cap (phase 7)
+
+Forced eccentricities of resonant moons are drawn (0.001-0.01), and the Io-calibrated heating
+formula is capped at the energy the planet's tide feeds into the resonant moons' orbits,
+sum of T n with T = 3/2 (k2/Q)_p G m^2 R_p^5 / a^6 (Yoder & Peale 1981). With the generic giant
+k2/Q = 5e-6 an Io analogue gets ~5e13 W (observed ~1e14 W; Jupiter's measured k2/Q is 1.1e-5,
+Lainey et al. 2009). Above ~10x Io's flux (20 W/m^2) moons are labelled super-Ios.

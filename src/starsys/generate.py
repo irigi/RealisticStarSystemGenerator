@@ -50,7 +50,8 @@ class Systems:
     def from_conditioned(cls, c) -> "Systems":
         """Bundle of a :class:`starsys.real.condition.ConditionedSystems`."""
         rec = c.record
-        meta = {"real_star": rec.name, "target": rec.star.name, "known_planets": [k.name for k in c.known],
+        meta = {"real_star": rec.name, "target": rec.star.name, "known_planets": [k.name for k in c.known]
+                + [k.name for ks in getattr(c, "known_other", {}).values() for k in ks],
                 "surveys": list(c.surveys), "effective_sample_size": round(float(c.ess), 1),
                 "inserted_fraction": {k: round(float(v), 3) for k, v in c.inserted_fraction.items()}}
         names = {j: comp.name for j, comp in enumerate(rec.components)}

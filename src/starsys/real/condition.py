@@ -96,19 +96,21 @@ class ConditionedSystems:
     insertion_softening: float = 1.0  # mu of :func:`tempering`
     n_unique: int = 0  # distinct prior systems among the output
     surveys: list[str] = field(default_factory=list)
+    known_other: dict[str, list[KnownPlanet]] = field(default_factory=dict)  # component name -> its known planets
 
     def summary(self) -> str:
         n = len(self.target)
         pl = self.planets
         on = pl["component"] == self.target[pl["system"]]
-        lines = [f"{self.record.name}: {n} systems conditioned on {len(self.known)} known planet(s); "
+        n_known = len(self.known) + sum(len(v) for v in self.known_other.values())
+        lines = [f"{self.record.name}: {n} systems conditioned on {n_known} known planet(s); "
                  f"{self.n_prior} prior systems, effective sample size {self.ess:.0f}, "
                  f"{self.n_unique} distinct, kernels widened x{self.kernel_widening:.2f}"
                  + (f", insertion penalty softened x{self.insertion_softening:.2f}" if self.insertion_softening > 1
                     else "")]
         for sv in self.surveys:
             lines.append(f"  survey {sv}")
-        for k in self.known:
+        for k in self.known + [k for ks in self.known_other.values() for k in ks]:
             lines.append(f"  known {k.name} ({k.method}): inserted in {self.inserted_fraction.get(k.name, 0):.0%}")
         n_on = np.bincount(pl["system"][on], minlength=n)
         lines.append(f"  planets around {self.record.star.name}: {n_on.mean():.2f} per system "
@@ -428,15 +430,36 @@ def _mass_from_radius(r) -> float:
     return 318.0
 
 
-def _build_one(pl, rows_sys, comps, choice: _Choice, known, target_row, offset, model: ConditionModel, rng):
+def _build_one(pl, rows_sys, comps, choice: _Choice, known, target_row, offset, model: ConditionModel, rng,
+               others=()):
     """Planet rows of one chosen system (dict of arrays) with the known planets in place.
     ``comps``: the system's component rows (``offset``: row of its first component in the batch);
-    ``target_row``: the real star's row in the batch."""
+    ``target_row``: the real star's row in the batch; ``others``: (choice, known, row) of the other
+    components with known planets (A10)."""
     p = {k: np.array(v[rows_sys]) for k, v in pl.items()}
     n = len(rows_sys)
-    p.setdefault("known_name", np.full(n, "", dtype=object))
     p["known_name"] = np.full(n, "", dtype=object)
-    pos = {r: i for i, r in enumerate(rows_sys)}
+    p["_row"] = np.asarray(rows_sys).copy()
+    # Orientation: the target's view; another component's only if the target has none (a system
+    # has one orientation; transiting known planets around two components at once are not handled).
+    view = choice.view
+    for ch, _, _ in others:
+        if view is None and ch.view is not None:
+            view = ch.view
+    if view is not None:
+        choice = _Choice(choice.col, view)
+    p = _place_known(p, comps, choice, known, target_row, offset, model, rng)
+    for ch, kn, row in others:
+        p = _place_known(p, comps, _Choice(ch.col, None), kn, row, offset, model, rng)
+    del p["_row"]
+    return p
+
+
+def _place_known(p, comps, choice: _Choice, known, target_row, offset, model: ConditionModel, rng):
+    """Snap matched model planets of component ``target_row`` to its ``known`` planets, insert the
+    unmatched ones, and remove model planets too close to them (``choice.view``: re-orient first)."""
+    n = len(p["_row"])
+    pos = {int(r): i for i, r in enumerate(p["_row"]) if r >= 0}
     # Orientation.
     if choice.view is not None:
         ok = np.isfinite(p["node_sky"])
@@ -548,7 +571,7 @@ def _inserted(p, k: KnownPlanet, host_mass, target_row, plane, rng) -> dict:
         "ecc": k.ecc if np.isfinite(k.ecc) else 0.0, "omega": 2 * np.pi * rng.random(), "incl_mut": 0.0,
         "incl_invariable": 0.0, "asc_node_invariable": 0.0, "incl_sky": incl_sky, "node_sky": node_sky,
         "mean_anom": 2 * np.pi * rng.random(), "mass_init": m, "radius_init": r, "lost_envelope": r < 1.6,
-        "known_name": k.name,
+        "known_name": k.name, "_row": -1,
     }
     for key in row:
         v = vals.get(key, np.nan if row[key].dtype.kind == "f" else 0)
@@ -580,10 +603,17 @@ def _refresh_invariable(p):
 def condition(target, n: int = 100, seed=None, known: list[KnownPlanet] | None = None, surveys="auto",
               model: ConditionModel = ConditionModel(), star_model: st.StarFitModel = st.StarFitModel(),
               planet_kwargs: dict | None = None, use_gaia: bool = True,
-              include_controversial: bool = False, moons: bool = True) -> ConditionedSystems:
+              include_controversial: bool = False, moons: bool = True,
+              other_components: bool = True) -> ConditionedSystems:
     """``n`` planetary systems of a real star (name, :class:`SystemRecord` or :class:`StarSystemFit`),
     conditioned on its known planets (default: the NASA archive's) and ``surveys`` (``"auto"``:
-    :func:`starsys.real.surveys.default_surveys`; ``None``: none; or a list of survey objects)."""
+    :func:`starsys.real.surveys.default_surveys`; ``None``: none; or a list of survey objects).
+
+    With ``other_components`` (default), the known planets of the system's other components are
+    conditioned on too (e.g. Proxima Centauri's around alpha Cen A): planets of different
+    components are drawn independently given the stars, so the likelihood is the product of the
+    per-component kernels. With ``surveys="auto"`` those components get their own default
+    surveys (non-detections); explicit ``surveys`` apply to the target star only."""
     rng = np.random.default_rng(seed)
     if isinstance(target, str):
         target = find(target, use_gaia=use_gaia)
@@ -595,10 +625,21 @@ def condition(target, n: int = 100, seed=None, known: list[KnownPlanet] | None =
     if known is None:
         known = known_planets(record.star.nasa_host, include_controversial)
     ka = _known_arrays(known, model)
+    hosts = []  # (component index, known planets, arrays) of the other components
+    if other_components:
+        for j, comp in enumerate(record.components):
+            if j == record.target or not comp.nasa_host or comp.nasa_host == record.star.nasa_host:
+                continue
+            kn = known_planets(comp.nasa_host, include_controversial)
+            if kn:
+                hosts.append((j, kn, _known_arrays(kn, model)))
     planet_kwargs = dict(planet_kwargs or {})
+    host_surveys = [[] for _ in hosts]
     if isinstance(surveys, str) and surveys == "auto":
         from .surveys import default_surveys
         surveys = default_surveys(record, known)
+        # the other components with known planets were searched too (their own RVs, TESS, Gaia)
+        host_surveys = [default_surveys(replace(record, target=j), kn) for j, kn, _ in hosts]
     elif surveys is not None and callable(getattr(surveys, "p_detect", None)):
         surveys = [surveys]
     surveys = list(surveys or [])
@@ -616,7 +657,16 @@ def condition(target, n: int = 100, seed=None, known: list[KnownPlanet] | None =
         for sv in surveys:
             sv.prepare(record, systems, components, tgt, known, rng)
         logw, chi2, n_ins, choices = _weigh_batch(pl, components, tgt, known, ka, surveys, model, rng)
-        batches.append((systems, components, tgt, pl, choices))
+        extra = []
+        for (j, kn, kj), svs in zip(hosts, host_surveys):
+            tj = tgt - record.target + j
+            rec_j = replace(record, target=j)
+            for sv in svs:
+                sv.prepare(rec_j, systems, components, tj, kn, rng)
+            lw_j, c2_j, ni_j, ch_j = _weigh_batch(pl, components, tj, kn, kj, svs, model, rng)
+            logw, chi2, n_ins = logw + lw_j, chi2 + c2_j, n_ins + ni_j
+            extra.append(ch_j)
+        batches.append((systems, components, tgt, pl, choices, extra))
         all_chi2.append(chi2)
         all_logw.append(logw)
         all_ins.append(n_ins)
@@ -636,16 +686,19 @@ def condition(target, n: int = 100, seed=None, known: list[KnownPlanet] | None =
 
     out_pl, out_sys, out_comp, out_tgt = [], [], [], []
     n_comp = len(record.components)
-    inserted = np.zeros(len(known))
+    all_known = known + [k for _, kn, _ in hosts for k in kn]
+    inserted = np.zeros(len(all_known))
     for i, g in enumerate(picks):
         b = int(np.searchsorted(offsets, g, side="right") - 1)
         s = int(g - offsets[b])
-        systems, components, tgt, pl, choices = batches[b]
+        systems, components, tgt, pl, choices, extra = batches[b]
         comps = {k: np.array(v[s * n_comp:(s + 1) * n_comp]) for k, v in components.items()}
         rows_sys = np.flatnonzero(pl["system"] == s)
         choice = choices[s]
-        p = _build_one(pl, rows_sys, comps, choice, known, s * n_comp + record.target, s * n_comp, model, rng)
-        inserted += choice.col < 0
+        others = [(ch[s], kn, s * n_comp + j) for ch, (j, kn, _) in zip(extra, hosts)]
+        p = _build_one(pl, rows_sys, comps, choice, known, s * n_comp + record.target, s * n_comp, model, rng,
+                       others)
+        inserted += np.concatenate([choice.col] + [o[0].col for o in others]) < 0
         # Renumber to the output system i.
         p["system"] = np.full(len(p["system"]), i, dtype=pl["system"].dtype)
         p["component"] = p["component"] - s * n_comp + i * n_comp
@@ -669,9 +722,12 @@ def condition(target, n: int = 100, seed=None, known: list[KnownPlanet] | None =
     moon_table = mn.attach_moons(planets, components, seed=rng) if moons else {}
     return ConditionedSystems(record=record, known=known, systems=systems, components=components, planets=planets,
                               moons=moon_table, target=np.array(out_tgt), ess=ess, n_prior=drawn,
-                              inserted_fraction={k.name: inserted[j] / n for j, k in enumerate(known)},
+                              inserted_fraction={k.name: inserted[j] / n for j, k in enumerate(all_known)},
+                              known_other={record.components[j].name: kn for j, kn, _ in hosts},
                               kernel_widening=lam, insertion_softening=mu, n_unique=len(np.unique(picks)),
-                              surveys=[sv.describe() for sv in surveys])
+                              surveys=[sv.describe() for sv in surveys]
+                              + [f"{record.components[j].name}: {sv.describe()}"
+                                 for (j, _, _), svs in zip(hosts, host_surveys) for sv in svs])
 
 
 __all__ = ["ConditionModel", "ConditionedSystems", "condition", "FLAG_KNOWN", "FLAG_KNOWN_INSERTED", "replace"]

@@ -223,11 +223,40 @@ and returns a `Systems` bundle of the four tables; conditioned systems convert w
   the input format of the planned viewer, §3.7), and flat CSV/Parquet tables with the labels
   as extra columns.
 
-### 3.7 Viewer (planned, step 5)
+### 3.7 Viewer, galaxy and star map (phase 7; `starsys.ids`, `starsys.view`, `starsys.galaxy`, `starsys.realstars`)
 
-Interactive exploration of one system at a time: an orbit view at true separations with planets
-on their own size scale, and a hierarchical system map (stars → planets → moons) with
-information panels, reading the JSON of §3.6. Plan in `docs/NEXT_STEPS.md`.
+- **Stable IDs** (`starsys.ids`): stars are drawn in blocks of 64 whose seed is a hash of the
+  block address; planets and moons of one system alone from a seed derived from the block seed
+  and the star's index. So a system is a pure function of its ID (`S<master>-<k>` for the
+  sequence, `G<ix>.<iy>.<iz>-<j>` for a galaxy sector, `G<t>:<ix>.<iy>.<iz>-<j>` for a
+  brightness-tier cell) and the star map can draw stars only, then planets on click,
+  identically. A real star's one system (`R:<name>`) is conditioned with a seed fixed by its
+  catalogue identifier, so it is the same in every session.
+- **System viewer** (`python -m starsys.view`, PySide6): Pioneer-style hierarchical system map
+  (one row per star, planets left to right, moons below; procedural artwork from
+  `starsys.view.art`, deterministic per body, physics-guided palettes), an orbit view at true
+  separations (face-on, linear/log, habitable zones, time controls), a body tree and a
+  plain-language information panel; the Sun opens the real Solar System (`starsys.real.solar`) (stellar orbits barycentric, each in its star's colour: the members of each pair
+  opposite about their centre of mass); Previous/Next over a seed sequence or a real star's
+  conditioned realisations; opened from the star map, Next jumps to a random system of the
+  galaxy (every system equally likely, a fixed sequence per starting star) and Previous walks
+  back. Artwork is re-rendered at the zoom (up to 1024 px) in worker threads.
+- **Galaxy** (`starsys.galaxy`): empirical Milky Way density (Reid et al. 2019 spiral arms,
+  Bland-Hawthorn & Gerhard 2016 discs and bar, Juric et al. 2008 halo; local normalisation from
+  the 20-pc census), coordinate-seeded 10-pc sectors with Poisson counts, populations (ages,
+  [Fe/H]) by component and radius, young stars confined to the arms. Brightness tiers: systems
+  whose primary is a living star of 1.5-3, 3-8 and >= 8 Msun are drawn in 80, 160 and 1280-pc
+  cells of their own (the >= 8 Msun ones, ~2e5, for the whole galaxy), so the bright stars seen
+  from afar are the ones found on arrival.
+- **Real stars** (`starsys.realstars`): the 20-pc census and the Hipparcos Survey are placed as
+  they are; a procedural system is removed exactly when those catalogues would contain it
+  (their selection functions), so the generated stars fill only what the catalogues miss.
+- **Star map** (`python -m starsys.view --galaxy`): pyqtgraph OpenGL; one star field at every
+  zoom: the N brightest stars in view (6000, up to 30000 for the whole galaxy; every star in
+  close views) of the real stars and the loaded tier cells, sized against a smooth function
+  of the zoom (no jumps), each tier fading out as a whole once the view outgrows its
+  cells, against the unresolved glow of the old stars; search, click or double-click to
+  centre, right-drag to move, open a system (real stars run the conditioning of §3.5).
 
 ## 4. Phases
 
@@ -241,8 +270,8 @@ information panels, reading the JSON of §3.6. Plan in `docs/NEXT_STEPS.md`.
 6. **Real-star conditioning** + survey-sensitivity models (done 2026-10-15).
 7. **Learned components** (amortised conditioning, detection emulators) — added
    where profiling shows they pay off.
-8. **Usability** (plan steps 4–5): summaries and exports (done 2026-10-15), interactive viewer
-   (planned).
+8. **Usability** (plan steps 4–5): summaries and exports (done 2026-10-15), interactive
+   system viewer, procedural Milky Way and 3D star map (done 2026-10-15/16, §3.7).
 
 Each phase ends with a validation report (plots + metrics against data).
 

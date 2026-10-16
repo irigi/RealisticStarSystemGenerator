@@ -49,8 +49,15 @@ Earth analogue's moon ends near 50 Earth radii after 4.6 Gyr with Q = 100, k2 = 
 eccentricity (the Laplace resonance holds Io at 0.004, Europa at 0.009 and Ganymede at 0.001),
 drawn log-uniform over 0.001-0.01; other moons are circular. The heat dissipated in the moon is
 E = (21/2) (k2/Q) G M_p^2 R_m^5 n e^2 / a^6 (Peale+1979; Segatz+1988) with Io's k2/Q = 0.015
-(Lainey+2009): Io itself gives 9e13 W, 2.2 W/m^2 (observed ~1e14 W). ``tidal_heating_w`` and
-``heat_flux_w_m2`` (the Earth's internal heat flow is 0.09 W/m^2).
+(Lainey+2009): Io itself gives 9e13 W, 2.2 W/m^2 (observed ~1e14 W). In equilibrium the resonance
+can only dissipate the energy the planet's tide pumps into the moons' orbits (Yoder & Peale 1981),
+so the heat is capped at the sum of T n over the planet's resonant moons, with the tidal torque
+T = (3/2) (k2/Q)_p G m^2 R_p^5 / a^6 and the planet's k2/Q of :class:`starsys.derived.DerivedModel`
+(Io dissipates about Jupiter's supply, Lainey+2009). Without the cap the Io-calibrated formula
+gave massive close moons of super-Jupiters fluxes of 10^3-10^4 W/m^2, ~5x the supply for the
+median heated moon. ``tidal_heating_w`` and ``heat_flux_w_m2`` (the Earth's internal heat flow is
+0.09 W/m^2; above ~10x Io's flux a moon is a "super-Io" with global volcanism, likely over a
+magma ocean).
 
 **Planet spin** (``attach_moons`` updates the planet table's ``rotation_h`` in place): the
 moons' tidal migration exchanges angular momentum with the planet's spin. The orbital angular
@@ -334,6 +341,19 @@ def attach_moons(planets, components, seed=None, model: MoonModel = MoonModel(),
     r_m = radius * EARTH_RADIUS_M
     n_orb = 2 * math.pi / (period * 86400.0)
     heat = 10.5 * model.moon_k2_q * G_SI * mp**2 * r_m**5 * n_orb * m["ecc"] ** 2 / np.maximum(a_m, 1.0) ** 6
+    # Energy supply: a resonance can only dissipate what the planet's tide feeds into the moons'
+    # orbits, sum of T_j n_j over the resonant moons of the planet, T = 3/2 (k2/Q)_p G m^2 R_p^5 / a^6
+    # (Yoder & Peale 1981; Io dissipates about this, Lainey+2009).
+    if len(p):
+        kind_p = dv.planet_kind(np.asarray(planets["planet_mass"], dtype=float)[p],
+                                np.asarray(planets["planet_radius"], dtype=float)[p],
+                                np.asarray(planets["lost_envelope"])[p], derived)
+        q_p, k2_p = np.array([derived.tides_rocky, derived.tides_subneptune, derived.tides_giant])[kind_p][:, :2].T
+        mm = m["mass"] * EARTH_MASS_KG
+        supply = 1.5 * k2_p / q_p * G_SI * mm**2 * (rp_km * 1e3) ** 5 / np.maximum(a_m, 1.0) ** 6 * n_orb
+        supply = np.where(m["ecc"] > 0, supply, 0.0)
+        cap = np.bincount(p, weights=supply, minlength=n)[p]
+        heat = np.minimum(heat, cap)
     res = {"planet": p, "system": np.asarray(planets["system"])[p], "component": np.asarray(planets["component"])[p],
            "kind": m["kind"], "mass": m["mass"], "radius": radius, "a_rp": a_rp, "a_km": a_rp * rp_km,
            "period": period, "ecc": m["ecc"], "incl": m["incl"], "tidal_heating_w": heat,

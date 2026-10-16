@@ -1,9 +1,9 @@
 # Next steps (as of 2026-10-15)
 
-Status: phases 1–6 of `DESIGN.md` are built and validated (stars, planets of every
+Status: phases 1–6 and 8 of `DESIGN.md` are built and validated (stars, planets of every
 population, derived properties, moons, systems around real stars). Phases 1–4 are merged into
 `main`; phase 5 and the backlog session are on branch `phase5`, phase 6 and step 4 on `phase6` (branched
-from `phase5`). How each part was built and checked: `DESIGN.md` §3, `docs/validation/`
+from `phase5`; `main` = `phase6` pushed to GitHub), the viewer/galaxy night run on `phase7-viewer`. How each part was built and checked: `DESIGN.md` §3, `docs/validation/`
 (`planets.md` for phase 4, `phase5.md` for phase 5, `phase6.md` for phase 6).
 
 The model is close to the limit of what the published data can test. Remaining questions that
@@ -22,46 +22,32 @@ not kept as open tasks.
 4. **Usability: summaries and exports** — done (2026-10-15; `DESIGN.md` §3.6): `python -m
    starsys` and `starsys.generate.generate`, readable per-system summaries
    (`starsys.describe`), JSON and CSV/Parquet exports (`starsys.export`), A9.
-5. **Viewer** (next): interactive exploration of a generated system, see below.
+5. **Viewer, galaxy, star map** — done (night run 2026-10-15/16; `DESIGN.md` §3.7, decisions
+   in `docs/NIGHT_PLAN.md`): PySide6 system viewer with Pioneer-style map, orbit view,
+   procedural artwork and Previous/Next over stable IDs; procedural Milky Way with spiral arms;
+   real stars blended by catalogue selection functions; 3D star map; A10; moon-heating cap.
+   Second round (2026-10-16, after the first look): one system per real star with a fixed
+   seed, Next/Previous as a random walk through the galaxy, mouse re-centring, artwork at the
+   zoom's resolution, and brightness tiers so that the map keeps the same density of stars
+   from 50 pc to the whole galaxy without a switch to a separate cloud.
 
-## Step 5: system viewer (plan)
+## Next (proposals)
 
-Goal: explore one system visually, in the spirit of Pioneer Space Simulator's system map:
-true orbital separations with planets on their own size scale, and a hierarchical map in which
-clicking a body opens its information.
-
-**Form.** One self-contained HTML file (vanilla JS + SVG/canvas, no server, no build step,
-works offline): `python -m starsys.view` (and `python -m starsys.real NAME --view`) writes the
-chosen systems' JSON (`starsys.system/1`, §3.6) into the page and opens it in the browser. The
-page also opens any exported JSON by drag-and-drop. Nothing in the generator changes; the
-viewer reads only the export, so the JSON schema is its contract.
-
-**Views.**
-1. *Orbit view* (true separations): top-down orbits as ellipses from a, e and ω around each
-   host; habitable zone shaded (optimistic and conservative); zoom and pan from the innermost
-   planet out to the stellar companions, with a linear/log distance toggle (log needed:
-   systems span 0.01–10⁴ au). Planets are discs on a separate size scale (radii relative to
-   each other kept, e.g. a common power-law of the radius), positions from the mean anomaly,
-   with an optional time slider.
-2. *System map* (hierarchy, Pioneer-like): barycentre → stars (pairs as binary nodes, the
-   chain hierarchy of the generator) → planets in order of distance → moons, as a horizontal
-   tree; bodies drawn at relative size and coloured by type and temperature (rocky by climate,
-   banded giants, blue ice giants, white dwarfs and brown dwarfs distinct); circumbinary
-   planets under their pair.
-3. *Information panel* on click: every exported field with units and plain-language labels
-   (class, T_eq marked "no greenhouse", illustrative surface temperature, habitable zone, spin,
-   moons, flags explained, known planets marked).
-4. *System list* when the file holds several systems (or realisations of a real star): filter
-   by spectral type, planets, habitable-zone rocky planets.
-
-**Steps.** (a) static map and orbit view from one JSON system; (b) interaction: zoom, click,
-panel; (c) system list and real-star realisations; (d) time slider, styling, size and colour
-legend. Checked by rendering sample systems (single G star, M-dwarf multi, circumbinary,
-white dwarf, a real star such as TRAPPIST-1) and screenshots.
-
-**Open choices for the user:** standalone HTML page (recommended: no new dependencies) vs a
-desktop window (PyQt) or a notebook widget; how far to go with artwork (flat colours vs
-procedural planet textures).
+- Viewer polish: rings are deliberately absent (no ring model; adding one would need a
+  physical basis, e.g. Roche-zone debris for young giants); orbit view of companions with
+  inclinations; a legend of colours; remembering the last system.
+- Galaxy: open clusters and moving groups (stars are Poisson otherwise; the Hyades, Pleiades
+  and Ursa Major group are conspicuous on real maps), Gaia DR3 as a deeper real catalogue
+  (needs a download and its selection function), extinction maps instead of the uniform
+  0.7 mag/kpc, the disc's warp and flare; the thin disc's total mass comes out ~35 % low
+  against BHG16 with the census normalisation (see NIGHT_PLAN D7).
+- Galaxy map: red giants of low-mass stars (the K giants that fill the real naked-eye sky)
+  are only in the 10-pc sectors; a tier of evolved low-mass stars would show them at kpc
+  scales. The whole galaxy's O/B stars take ~8 s to load (progressively); a disk cache would
+  make that instant.
+- Performance: sector generation is ~1.5 ms per 10-pc sector near the Sun but ~5600 systems
+  per sector at the Galactic centre; the map never loads such sectors today (it only loads
+  within 45 pc of the view centre), but browsing the bulge would need a coarser level of detail.
 
 Phase 7 (learned emulators): not needed so far. Conditioning takes 5–35 s per star, almost all
 of it in drawing prior systems; the importance sampling itself reaches ESS 200 even for
@@ -100,8 +86,12 @@ Validation and known limits: `docs/validation/phase6.md`; assumptions: `docs/ASS
 
 ```bash
 source .venv/bin/activate
-pytest -q                                  # all tests should pass (88)
+pytest -q                                  # all tests should pass (112)
 python -m starsys -n 5 --seed 1             # five random systems, printed
+python -m starsys --id S1-42                # one system by its stable ID
+python -m starsys.view                      # system viewer (Previous/Next)
+python -m starsys.view --real "tau Ceti"    # viewer on a real star's conditioned systems
+python -m starsys.view --galaxy             # 3D galaxy / star map
 python -m starsys.validation.census        # stellar population vs 20-pc census
 python -m starsys.validation.hmc --catalogs 6-25 --criterion hill   # HM-C port check
 python -m starsys.validation.planets --catalogs 1-30                # planet glue on Kepler stars
@@ -123,8 +113,10 @@ python -m starsys.validation.report5                                # phase 5 re
 
 `validation.mdwarf`, `.giants` and `.binaries` take `--fit` to redo their calibration.
 
-`catalogs/` and `data/` are gitignored. Everything under `data/` is a cache rebuilt on first
-use: the MIST grid and primary-mass weights (`data/stellar/`), the HM-C edge table
+`catalogs/` and `data/` are gitignored. The star map needs `catalogs/observational/stars/
+hip_main.ecsv` (VizieR I/239, fetched with astroquery) and `IAU-CSN.txt` (Mamajek's IAU-CSN
+list); `data/real/starmap.parquet` is built from them (~25 s). Everything under `data/` is a
+cache rebuilt on first use: the MIST grid and primary-mass weights (`data/stellar/`), the HM-C edge table
 (`data/outer/`, ~2 min), the single-star boost table (~15 s) and the Kozai–Lidov cycle table
 (~6 min, both `data/binaries/`).
 
@@ -161,10 +153,11 @@ Open:
 - **A6 (B28, B29, optional) Worldbuilding extras.** Small irregular moons (size
   distribution, Jewitt & Haghighipour 2007) and water lost during the runaway phase
   (Luger & Barnes 2015 escape rates).
-- **A10 Known planets of other components** (found in step 4). Conditioning uses the known
-  planets of the looked-up star only: Alpha Centauri (target α Cen A) is conditioned on 0
-  planets, although Proxima Centauri's are known. Look up and match the NASA planets of every
-  component (`real.known`, `real.condition`).
+- **A10 Known planets of other components** — DONE (phase 7 night run): `condition(...,
+  other_components=True)` multiplies in the kernels of every component's NASA planets (and,
+  with `surveys="auto"`, that component's own surveys); Alpha Centauri now carries Proxima b
+  and d. Open: a system has one orientation, so transiting known planets around two
+  components at once are not both honoured.
 
 ### B. Assumed (documented in `docs/ASSUMPTIONS.md`)
 
