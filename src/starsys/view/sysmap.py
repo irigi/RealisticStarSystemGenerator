@@ -5,12 +5,20 @@ planets to the right in order of distance, each planet's moons stacked below it.
 follow ``R^0.5`` (monotonic, so relative sizes keep their order and Jupiter/Earth/Moon stay
 recognisably different; stars are capped). Lines show the hierarchy: companions are joined
 to the stars they orbit, planets to their host.
+
+Artwork is rendered at the resolution it is shown at (zoom times the screen's device pixel
+ratio, up to :data:`MAX_RENDER` px): after each zoom the visible bodies are re-rendered in
+worker threads (numpy releases the GIL) and swapped in when ready.
 """
 
 from __future__ import annotations
 
+import os
+from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor
+
 import numpy as np
-from PySide6.QtCore import QPointF, QRectF, Qt, Signal
+from PySide6.QtCore import QObject, QPointF, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import QBrush, QColor, QFont, QImage, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import QGraphicsEllipseItem, QGraphicsScene, QGraphicsView
 
@@ -24,7 +32,10 @@ TEXT = QColor(205, 214, 230)
 SUBTEXT = QColor(130, 145, 170)
 SELECT = QColor(120, 190, 255)
 
-_cache: dict[tuple[int, int], QPixmap] = {}
+MAX_RENDER = 1024           # px, largest rendering of one body
+CACHE_PX = 48_000_000       # rendered pixels kept (about 190 MB)
+_cache: OrderedDict[tuple[int, int], QImage] = OrderedDict()
+_cache_px = [0]
 
 
 def display_px(radius_earth: float, star: bool = False) -> float:
@@ -36,18 +47,88 @@ def fmt_km(km: float) -> str:
     return f"{km:,.0f} km" if km < 1e7 else f"{km / 1.496e8:.3g} au"
 
 
-def pixmap(body, px: int) -> QPixmap:
-    """Cached artwork of a body (render size includes the stellar glow)."""
-    key = (body.seed, px)
-    pm = _cache.get(key)
-    if pm is None:
-        if len(_cache) > 2000:
-            _cache.clear()
-        arr = np.ascontiguousarray(art.render(body.d, px, body.seed))
-        img = QImage(arr.data, px, px, 4 * px, QImage.Format.Format_RGBA8888).copy()
-        pm = QPixmap.fromImage(img)
-        _cache[key] = pm
+def render_px(px: float, scale: float = 1.0) -> int:
+    """Pixels to render a body shown ``px`` (logical) wide at ``scale`` device px per logical px."""
+    return int(np.clip(round(px * max(scale, 1.0)), 4, max(MAX_RENDER, int(px))))
+
+
+def _image(arr: np.ndarray) -> QImage:
+    n = arr.shape[0]
+    arr = np.ascontiguousarray(arr)
+    return QImage(arr.data, n, n, 4 * n, QImage.Format.Format_RGBA8888).copy()
+
+
+def _store(key, img: QImage):
+    _cache[key] = img
+    _cache_px[0] += img.width() * img.height()
+    while _cache_px[0] > CACHE_PX and len(_cache) > 1:
+        _, old = _cache.popitem(last=False)
+        _cache_px[0] -= old.width() * old.height()
+
+
+def image(body, n: int) -> QImage:
+    """Cached artwork of a body, ``n`` x ``n`` px (the render size includes the stellar glow)."""
+    key = (body.seed, n)
+    img = _cache.get(key)
+    if img is None:
+        img = _image(art.render(body.d, n, body.seed))
+        _store(key, img)
+    else:
+        _cache.move_to_end(key)
+    return img
+
+
+def to_pixmap(img: QImage, px: float) -> QPixmap:
+    """Pixmap of logical size ``px`` showing ``img`` (device pixel ratio = image size / px)."""
+    pm = QPixmap.fromImage(img)
+    pm.setDevicePixelRatio(img.width() / max(px, 1e-3))
     return pm
+
+
+def pixmap(body, px: int, scale: float = 1.0) -> QPixmap:
+    """Artwork of a body shown ``px`` logical pixels wide, rendered for ``scale`` device pixels
+    per logical pixel."""
+    return to_pixmap(image(body, render_px(px, scale)), px)
+
+
+class ArtLoader(QObject):
+    """Renders artwork in worker threads; ``callback(QImage)`` runs in the GUI thread."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.pool = ThreadPoolExecutor(max_workers=max(2, (os.cpu_count() or 2) // 2))
+        self.pending: list = []
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self._poll)
+
+    def request(self, body, n: int, callback):
+        key = (body.seed, n)
+        if key in _cache:
+            callback(_cache[key])
+            return
+        fut = self.pool.submit(art.render, body.d, n, body.seed)
+        self.pending.append((fut, key, callback))
+        self.timer.start(30)
+
+    def cancel(self):
+        for fut, _, _ in self.pending:
+            fut.cancel()
+        self.pending = []
+
+    def _poll(self):
+        still = []
+        for fut, key, cb in self.pending:
+            if not fut.done():
+                still.append((fut, key, cb))
+            elif not fut.cancelled() and fut.exception() is None:
+                img = _cache.get(key)
+                if img is None:
+                    img = _image(fut.result())
+                    _store(key, img)
+                cb(img)
+        self.pending = still
+        if not still:
+            self.timer.stop()
 
 
 def _au(a):
@@ -68,6 +149,12 @@ class SystemMapView(QGraphicsView):
         self.ring = None
         self.model: SystemModel | None = None
         self._press = None
+        self._art: list[list] = []  # [pixmap item, body, logical px, rendered px]
+        self.loader = ArtLoader(self)
+        self._gen = 0
+        self._sharpen = QTimer(self)
+        self._sharpen.setSingleShot(True)
+        self._sharpen.timeout.connect(self.sharpen)
 
     # --- drawing ------------------------------------------------------------------------
     def drawBackground(self, painter: QPainter, rect: QRectF):
@@ -88,6 +175,9 @@ class SystemMapView(QGraphicsView):
     def set_system(self, m: SystemModel):
         self.model = m
         sc = self.scene()
+        self.loader.cancel()
+        self._gen += 1
+        self._art = []
         sc.clear()
         self.items_by_name.clear()
         self.ring = None
@@ -172,17 +262,20 @@ class SystemMapView(QGraphicsView):
         k = max(min(self.viewport().width() / r.width(), self.viewport().height() / r.height(), 1.0), 0.4)
         self.resetTransform()
         self.scale(k, k)
+        self._sharpen.start(120)
         vw, vh = self.viewport().width() / k, self.viewport().height() / k
         cx = r.center().x() if r.width() <= vw else r.left() + vw / 2
         cy = r.center().y() if r.height() <= vh else r.top() + vh / 2
         self.centerOn(cx, cy)
 
-    def _add_body(self, b, x, y, size, render_px, font, small, sub, label_right=False):
+    def _add_body(self, b, x, y, size, art_px, font, small, sub, label_right=False):
         sc = self.scene()
-        render_px = max(int(render_px), 6)
-        pm = pixmap(b, render_px)
-        it = sc.addPixmap(pm)
-        it.setOffset(x - render_px / 2, y - render_px / 2)
+        art_px = max(int(art_px), 6)
+        n = render_px(art_px, self.devicePixelRatioF())
+        it = sc.addPixmap(to_pixmap(image(b, n), art_px))
+        it.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
+        it.setOffset(x - art_px / 2, y - art_px / 2)
+        self._art.append([it, b, art_px, n])
         it.setData(0, b.name)
         it.setCursor(Qt.CursorShape.PointingHandCursor)
         it.setToolTip(f"{b.name}: {b.d.get('class') or b.d.get('spectral_type') or b.d.get('kind', '')}")
@@ -248,6 +341,34 @@ class SystemMapView(QGraphicsView):
     def wheelEvent(self, ev):
         f = 1.15 if ev.angleDelta().y() > 0 else 1 / 1.15
         self.scale(f, f)
+        self._sharpen.start(150)
+
+    def scrollContentsBy(self, dx, dy):
+        super().scrollContentsBy(dx, dy)
+        self._sharpen.start(150)
+
+    def resizeEvent(self, ev):
+        super().resizeEvent(ev)
+        self._sharpen.start(150)
+
+    def sharpen(self):
+        """Re-render the visible bodies whose artwork is coarser than the current zoom shows."""
+        zoom = self.transform().m11() * self.devicePixelRatioF()
+        seen = self.mapToScene(self.viewport().rect()).boundingRect()
+        gen = self._gen
+        for rec in self._art:
+            it, b, lpx, cur = rec
+            if not seen.intersects(it.sceneBoundingRect()):
+                continue
+            need = render_px(lpx, zoom)
+            if need <= cur * 1.2:
+                continue
+            rec[3] = need
+
+            def done(img, it=it, lpx=lpx, gen=gen):
+                if gen == self._gen:
+                    it.setPixmap(to_pixmap(img, lpx))
+            self.loader.request(b, need, done)
 
 
-__all__ = ["SystemMapView", "display_px", "pixmap"]
+__all__ = ["ArtLoader", "MAX_RENDER", "SystemMapView", "display_px", "image", "pixmap", "render_px", "to_pixmap"]

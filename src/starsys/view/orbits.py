@@ -195,7 +195,7 @@ class OrbitView(QWidget):
             size = display_px(b.radius_earth, b.cat == "star") * self.size_factor * (0.2 if b.cat == "star" else 0.4)
             size = max(size, 4.0)
             rp = int(size / 0.72) if b.cat == "star" else int(size)
-            pm = pixmap(b, max(rp, 4))
+            pm = pixmap(b, max(rp, 4), self.devicePixelRatioF())
             p.drawPixmap(QRectF(q[0] - rp / 2, q[1] - rp / 2, rp, rp), pm, QRectF(pm.rect()))
             if name == self.selected:
                 p.setPen(QPen(SELECT, 1.5))

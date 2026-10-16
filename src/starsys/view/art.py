@@ -36,20 +36,27 @@ class Noise3:
         rng = np.random.default_rng(seed)
         self.perm = np.concatenate([rng.permutation(256)] * 2).astype(np.int64)
         self.vals = rng.random(256) * 2.0 - 1.0
+        # lattice value = vals[perm[perm[perm[i] + j] + k]]: the first two lookups as one
+        # 256 x 256 table and the last two as one 512 table (same values, fewer gathers)
+        p = self.perm
+        self._pij = p[p[:256, None] + np.arange(256)[None, :]].astype(np.intp)
+        self._vk = self.vals[p].astype(np.float32)
 
     def _h(self, i, j, k):
-        p = self.perm
-        return self.vals[p[p[p[i & 255] + (j & 255)] + (k & 255)]]
+        return self._vk[self._pij[i & 255, j & 255] + (k & 255)]
 
     def __call__(self, x, y, z):
-        xi, yi, zi = np.floor(x).astype(np.int64), np.floor(y).astype(np.int64), np.floor(z).astype(np.int64)
-        fx, fy, fz = x - xi, y - yi, z - zi
+        xi, yi, zi = np.floor(x), np.floor(y), np.floor(z)
+        fx, fy, fz = (x - xi).astype(np.float32), (y - yi).astype(np.float32), (z - zi).astype(np.float32)
+        xi, yi, zi = xi.astype(np.intp) & 255, yi.astype(np.intp) & 255, zi.astype(np.intp) & 255
+        x1, y1, z1 = (xi + 1) & 255, (yi + 1) & 255, (zi + 1) & 255
         u, v, w = (f * f * f * (f * (f * 6 - 15) + 10) for f in (fx, fy, fz))
-        h = self._h
-        x00 = h(xi, yi, zi) * (1 - u) + h(xi + 1, yi, zi) * u
-        x10 = h(xi, yi + 1, zi) * (1 - u) + h(xi + 1, yi + 1, zi) * u
-        x01 = h(xi, yi, zi + 1) * (1 - u) + h(xi + 1, yi, zi + 1) * u
-        x11 = h(xi, yi + 1, zi + 1) * (1 - u) + h(xi + 1, yi + 1, zi + 1) * u
+        pij, vk = self._pij, self._vk
+        a00, a10, a01, a11 = pij[xi, yi], pij[x1, yi], pij[xi, y1], pij[x1, y1]
+        x00 = vk[a00 + zi] * (1 - u) + vk[a10 + zi] * u
+        x10 = vk[a01 + zi] * (1 - u) + vk[a11 + zi] * u
+        x01 = vk[a00 + z1] * (1 - u) + vk[a10 + z1] * u
+        x11 = vk[a01 + z1] * (1 - u) + vk[a11 + z1] * u
         return (x00 * (1 - v) + x10 * v) * (1 - w) + (x01 * (1 - v) + x11 * v) * w
 
     def fbm(self, p, octaves=5, freq=1.0, gain=0.5, lac=2.03):

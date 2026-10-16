@@ -126,3 +126,37 @@ def test_star_map_mouse_centre():
         time.sleep(0.03)
     assert np.linalg.norm(w._centre() - (10, 20, 0)) > 5
     w.close()
+
+
+def test_artwork_is_rendered_at_the_zoom():
+    import time
+
+    from PySide6.QtWidgets import QApplication
+
+    from starsys.view import sysmap
+    from starsys.view.app import SequenceSource, SystemWindow
+    app = QApplication.instance() or QApplication([])
+    w = SystemWindow(SequenceSource(1), 3)
+    w.resize(1400, 900)
+    w.show()
+    app.processEvents()
+    w.load(3)
+    m = w.map
+    b = m._art[0][1]
+    pm = sysmap.pixmap(b, 40, 2.0)
+    assert pm.width() == 80 and pm.devicePixelRatio() == 2.0
+    it, _, lpx, n0 = m._art[0]
+    m.centerOn(it.sceneBoundingRect().center())
+    m.scale(4, 4)
+    m.centerOn(it.sceneBoundingRect().center())
+    m.sharpen()
+    for _ in range(200):
+        app.processEvents()
+        if not m.loader.pending:
+            break
+        time.sleep(0.02)
+    app.processEvents()
+    need = sysmap.render_px(lpx, m.transform().m11() * m.devicePixelRatioF())
+    assert need > 1.5 * n0 and it.pixmap().width() == need
+    assert abs(it.pixmap().width() / it.pixmap().devicePixelRatio() - lpx) < 1  # same size on the map
+    w.close()
